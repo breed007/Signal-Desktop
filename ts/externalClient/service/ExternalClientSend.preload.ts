@@ -19,6 +19,7 @@ import { makeQuote } from '../../util/makeQuote.preload.ts';
 import { isDirectConversation } from '../../util/whatTypeOfConversation.dom.ts';
 import type { ServiceResultType } from '../hostTypes.std.ts';
 import { toMessageDTO } from '../messageDto.std.ts';
+import { acceptAllSafetyNumbers } from './ExternalClientSafetyNumbers.preload.ts';
 import { getLinkPreviewsForSend } from './ExternalClientLinkPreviews.preload.ts';
 import { toBodyRanges } from './ExternalClientMentions.preload.ts';
 import type {
@@ -112,7 +113,9 @@ export async function getSendBlockReason(
     return SendBlockReason.AnnouncementOnly;
   }
 
-  // Where the composer would open the safety-number dialog.
+  // Where the composer would open the safety-number dialog, the change is
+  // accepted and the send goes on (decision F40).
+  await acceptAllSafetyNumbers(model);
   const untrusted = await getUntrustedRecipients(
     getRecipientsByConversation([model.attributes])
   );

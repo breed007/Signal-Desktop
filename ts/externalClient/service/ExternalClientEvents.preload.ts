@@ -28,6 +28,7 @@ import {
   TOPICS_CHANNEL,
   rendererTopicsSchema,
 } from '../rendererChannel.std.ts';
+import { releaseSendsStoppedForVerification } from './ExternalClientSafetyNumbers.preload.ts';
 import {
   getDtoContext,
   getListedConversation,
@@ -225,6 +226,7 @@ function startConversations(): void {
   // baseline and produces no events.
   differ.reset(lookup, getPinnedIds());
   unsubscribeStore = window.reduxStore.subscribe(() => {
+    releaseSendsStoppedForVerification();
     if (!diffTimer) {
       diffTimer = setTimeout(diffConversations, CONVERSATION_DIFF_DELAY_MS);
     }

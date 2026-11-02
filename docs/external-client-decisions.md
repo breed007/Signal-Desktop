@@ -1007,3 +1007,16 @@ nothing for deleted or view-once messages, whose content never crosses.
 
 WHY: next missing item on the parity list after the 2026-10-26 check.
 
+
+## F40. Fork only: sends accept changed safety numbers
+
+DECISION: a send from the page never stops on a changed safety number. The
+send gate accepts the changed contacts first, as Signal's "Send anyway"
+does, and a number that changes during a send (which stops the chat's queue
+and opens a dialog nobody sees in the headless window) is accepted and the
+queue resumed (verifyConversationsStoppingSend). The F35 dialog stays for
+clients that still ask. Supersedes D11 for this fork.
+
+WHY: Mike (2026-11-02): a group reply silently didn't go out because
+someone's safety number changed. "Just make it auto-accept any key
+changes."
