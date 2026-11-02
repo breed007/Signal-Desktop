@@ -9,7 +9,7 @@ Status: **done**, **partial**, **missing**, or **different** (on purpose).
 A weekly check compares new Signal releases against this list and adds
 what they bring.
 
-Last reviewed: 2026-10-26, against Signal 8.35.0-alpha.1 in fork main.
+Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 
 ## Chat list
 
@@ -44,6 +44,7 @@ Last reviewed: 2026-10-26, against Signal 8.35.0-alpha.1 in fork main.
 | Long messages                                            | done      |                                                      |
 | Polls (vote, end, create, send to many chats)            | done      | F6                                                   |
 | Stickers (view and send)                                 | done      | F10                                                  |
+| Sticker favorites                                        | missing   | Signal beta, behind a remote flag                    |
 | Link previews (view)                                     | done      |                                                      |
 | Mark read as you read, clears "mark as unread"           | done      | F13                                                  |
 | Unread line, jump-to-newest button with count            | done      | F18                                                  |
@@ -79,10 +80,10 @@ Last reviewed: 2026-10-26, against Signal 8.35.0-alpha.1 in fork main.
 | Send link previews                                 | done      | F27                                          |
 | Scheduled messages                                 | different | F29: Desktop has none; the helper sends them |
 | Record voice notes                                 | done      | F19                                          |
-| Send contact cards                                 | missing   |                                              |
+| Send contact cards                                 | missing   | Signal Desktop 8.34 added it                 |
 | GIF search                                         | missing   |                                              |
 | Typing indicators (send them)                      | done      | F14                                          |
-| Safety number changed: Send anyway                 | done      | F35                                          |
+| Safety number changed                              | different | F40: accepted by itself, never stops a send  |
 | Send view-once media                               | missing   |                                              |
 | Sent media quality per message                     | missing   | the setting applies                          |
 
