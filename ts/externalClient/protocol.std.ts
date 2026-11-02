@@ -157,6 +157,7 @@ export const Method = {
   StickersGetPacks: 'stickers.getPacks',
   StickersGetImage: 'stickers.getImage',
   MessagesSendSticker: 'messages.sendSticker',
+  MessagesSendContact: 'messages.sendContact',
   SettingsGet: 'settings.get',
   SettingsSet: 'settings.set',
   ProfileGet: 'profile.get',
@@ -210,6 +211,7 @@ export const SERVICE_METHOD_CAPABILITIES = {
   [Method.StickersGetPacks]: Capability.MessagesSend,
   [Method.StickersGetImage]: Capability.MessagesSend,
   [Method.MessagesSendSticker]: Capability.MessagesSend,
+  [Method.MessagesSendContact]: Capability.MessagesSend,
   [Method.SettingsGet]: Capability.SettingsManage,
   [Method.SettingsSet]: Capability.SettingsManage,
   [Method.ProfileGet]: Capability.SettingsManage,
@@ -734,6 +736,8 @@ const attachmentTargetShape = {
   preview: z.number().int().min(0).max(15).optional(),
   // The thumbnail in the message's quote (quote.attachment.hasThumbnail).
   quote: z.literal(true).optional(),
+  // The photo on the message's contact card (contact.hasAvatar).
+  contact: z.literal(true).optional(),
 };
 
 export const attachmentsGetThumbnailParamsSchema = z
@@ -1006,6 +1010,23 @@ export const messagesSendStickerParamsSchema = z
   .strict();
 export type MessagesSendStickerParamsType = z.infer<
   typeof messagesSendStickerParamsSchema
+>;
+
+// Fork addition (decision F41): Signal 8.34's Share contact. Sends the card
+// Signal's dialog would make for this person; the phone number goes unless
+// `phone` is false, their nickname and note only when asked, as the dialog's
+// checkboxes.
+export const messagesSendContactParamsSchema = z
+  .object({
+    conversationId: conversationIdSchema,
+    contactConversationId: conversationIdSchema,
+    phone: z.boolean().optional(),
+    nickname: z.boolean().optional(),
+    note: z.boolean().optional(),
+  })
+  .strict();
+export type MessagesSendContactParamsType = z.infer<
+  typeof messagesSendContactParamsSchema
 >;
 
 // Fork addition: Signal's Settings, the parts that make sense for a
@@ -1625,6 +1646,7 @@ export const SERVICE_PARAM_SCHEMAS = {
   [Method.StickersGetPacks]: stickersGetPacksParamsSchema,
   [Method.StickersGetImage]: stickersGetImageParamsSchema,
   [Method.MessagesSendSticker]: messagesSendStickerParamsSchema,
+  [Method.MessagesSendContact]: messagesSendContactParamsSchema,
   [Method.SettingsGet]: settingsGetParamsSchema,
   [Method.SettingsSet]: settingsSetParamsSchema,
   [Method.ProfileGet]: profileGetParamsSchema,
@@ -1725,6 +1747,8 @@ export const MessageKind = {
   Unsupported: 'unsupported',
   // Fork addition: see `poll`.
   Poll: 'poll',
+  // Fork addition: see `contact`.
+  Contact: 'contact',
 } as const;
 export type MessageKindType = (typeof MessageKind)[keyof typeof MessageKind];
 
@@ -1771,6 +1795,27 @@ export type AttachmentMetadataDTO = Readonly<{
   isGif: boolean;
   caption: string | null;
   blurHash: string | null;
+}>;
+
+// Fork addition (decision F41): a shared contact card, as Signal's bubble
+// and contact detail page show it. Its numbers, emails and addresses are
+// message content, like the body.
+export type ContactCardFieldDTO = Readonly<{
+  value: string;
+  // Signal's label: Home, Mobile, Work, or the sender's own.
+  label: string;
+}>;
+
+export type ContactCardDTO = Readonly<{
+  name: string | null;
+  organization: string | null;
+  numbers: ReadonlyArray<ContactCardFieldDTO>;
+  emails: ReadonlyArray<ContactCardFieldDTO>;
+  addresses: ReadonlyArray<ContactCardFieldDTO>;
+  // attachments.read with `contact: true` works.
+  hasAvatar: boolean;
+  // Our chat with this person, when they are on Signal and we have one.
+  conversationId: string | null;
 }>;
 
 // Fork addition.
@@ -1866,6 +1911,7 @@ export type MessageDTO = Readonly<{
   canEdit: boolean;
   canDeleteForEveryone: boolean;
   poll: PollDTO | null;
+  contact: ContactCardDTO | null;
   quote: QuoteDTO | null;
   edited: boolean;
   // Disappearing messages: clients must discard the message by this time.

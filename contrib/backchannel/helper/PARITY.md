@@ -51,7 +51,7 @@ Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 | Typing indicators (see them)                             | done      | F14                                                  |
 | Disappearing messages (expire on time)                   | done      |                                                      |
 | View-once media                                          | missing   |                                                      |
-| Contact cards (view)                                     | missing   |                                                      |
+| Contact cards (view)                                     | done      | F41: numbers, emails, addresses, Message             |
 | Payments, gift badges                                    | missing   |                                                      |
 | Message details (per-recipient delivery)                 | missing   |                                                      |
 | Edit history                                             | done      | F39                                                  |
@@ -80,7 +80,7 @@ Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 | Send link previews                                 | done      | F27                                          |
 | Scheduled messages                                 | different | F29: Desktop has none; the helper sends them |
 | Record voice notes                                 | done      | F19                                          |
-| Send contact cards                                 | missing   | Signal Desktop 8.34 added it                 |
+| Send contact cards                                 | done      | F41: name, photo, number, as Signal 8.34     |
 | GIF search                                         | missing   |                                              |
 | Typing indicators (send them)                      | done      | F14                                          |
 | Safety number changed                              | different | F40: accepted by itself, never stops a send  |

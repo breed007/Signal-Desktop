@@ -144,6 +144,13 @@
           <button
             type="button"
             class="icon-button"
+            id="contact-open"
+            title="Contact"
+            aria-label="Contact"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
             id="sticker-open"
             title="Stickers"
             aria-label="Stickers"
@@ -312,6 +319,28 @@
           spellcheck="false"
         />
         <ul class="forward-list" id="block-chooser-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="contact-chooser" hidden>
+      <div class="modal" role="dialog" aria-labelledby="contact-chooser-title">
+        <div class="modal-head">
+          <span id="contact-chooser-title">Share contact</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="contact-chooser-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <input
+          id="contact-chooser-search"
+          type="search"
+          placeholder="Search"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <ul class="forward-list" id="contact-chooser-list"></ul>
       </div>
     </div>
     <div class="modal-backdrop" id="forward" hidden>

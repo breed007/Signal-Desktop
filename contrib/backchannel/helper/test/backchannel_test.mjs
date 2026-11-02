@@ -1343,6 +1343,26 @@ describe('backchannel helper', () => {
     assert.equal(reply.params.quoteMessageId, 'm1');
   });
 
+  it('sends a contact card with the phone number, nothing private', async () => {
+    const sent = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/sendContact`,
+      headers: json,
+      body: { conversationId: alice.id, contactConversationId: 'conv-bob' },
+    });
+    assert.equal(sent.status, 200);
+    const send = bridge.calls.findLast(
+      c => c.method === 'messages.sendContact'
+    );
+    assert.deepEqual(send.params, {
+      conversationId: alice.id,
+      contactConversationId: 'conv-bob',
+      phone: true,
+      nickname: false,
+      note: false,
+    });
+  });
+
   it('passes formatting on sends and edits', async () => {
     const formatting = [{ start: 0, length: 2, style: 'bold' }];
     const sent = await http(port, {

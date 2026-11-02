@@ -45,6 +45,7 @@ import { listMedia } from './ExternalClientMedia.preload.ts';
 import { searchMessages } from './ExternalClientSearch.preload.ts';
 import { listChatFolders } from './ExternalClientChatFolders.preload.ts';
 import { syncContacts } from './ExternalClientContactSync.preload.ts';
+import { sendContact } from './ExternalClientContactCards.preload.ts';
 import {
   acceptSafetyNumbers,
   listChangedSafetyNumbers,
@@ -426,6 +427,13 @@ async function dispatch(
       }
       const params = safeParseUnknown(SERVICE_PARAM_SCHEMAS[method], rawParams);
       return params.success ? sendSticker(params.data) : invalid;
+    }
+    case Method.MessagesSendContact: {
+      if (!window.ConversationController.isInitialFetchComplete()) {
+        return notReady;
+      }
+      const params = safeParseUnknown(SERVICE_PARAM_SCHEMAS[method], rawParams);
+      return params.success ? sendContact(params.data) : invalid;
     }
     case Method.ConversationsSetTyping: {
       if (!window.ConversationController.isInitialFetchComplete()) {

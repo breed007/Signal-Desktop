@@ -1020,3 +1020,17 @@ clients that still ask. Supersedes D11 for this fork.
 WHY: Mike (2026-11-02): a group reply silently didn't go out because
 someone's safety number changed. "Just make it auto-accept any key
 changes."
+
+## F41. Fork only: contact cards
+
+DECISION: shared contacts show as Signal's contact bubble: photo, name,
+organization, and the card's numbers, emails and addresses with Signal's
+labels, plus Message when the person is on Signal. MessageDTO gains
+`contact` (kind `contact`), and attachments.read/getThumbnail take
+`contact: true` for the card's photo. The composer's contact button sends
+one with `messages.sendContact` (messages.send, so no new Allow): the card
+Signal 8.34's Share contact dialog makes (getShareContactDraft), with the
+phone number and without nickname or note, as the dialog's defaults.
+
+WHY: the 2026-11-02 parity check found "Share contacts from Desktop" in
+Signal 8.34's release notes; viewing cards was already on the list.

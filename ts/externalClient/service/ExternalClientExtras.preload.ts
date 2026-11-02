@@ -204,8 +204,11 @@ async function findAttachment({
   sticker,
   preview,
   quote,
+  contact,
 }: AttachmentsGetThumbnailParamsType): Promise<AttachmentType | undefined> {
-  const targets = [index, sticker, preview, quote].filter(t => t !== undefined);
+  const targets = [index, sticker, preview, quote, contact].filter(
+    t => t !== undefined
+  );
   if (targets.length !== 1) {
     return undefined;
   }
@@ -219,6 +222,11 @@ async function findAttachment({
   }
   if (sticker) {
     return dto.sticker ? message.sticker?.data : undefined;
+  }
+  if (contact) {
+    return dto.contact?.hasAvatar
+      ? message.contact?.[0]?.avatar?.avatar
+      : undefined;
   }
   if (quote) {
     return dto.quote?.attachment?.hasThumbnail
@@ -250,6 +258,7 @@ export async function getAttachmentThumbnail(
     (isImageAttachment(attachment) ||
       params.sticker ||
       params.quote ||
+      params.contact ||
       params.preview !== undefined) &&
     attachment.path
   ) {

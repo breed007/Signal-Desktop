@@ -411,6 +411,7 @@ export class FakeBridge {
           ).toString('base64'),
         });
         return;
+      case 'messages.sendContact':
       case 'messages.sendSticker': {
         const reason = this.sendRefusals.get(params.conversationId);
         if (reason) {

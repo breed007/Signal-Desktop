@@ -164,6 +164,7 @@ const ICONS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM16 16l4.5 4.5',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
   poll: 'M5 20V11M12 20V4M19 20v-6',
+  contact: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
   back: 'M15 5l-7 7 7 7',
@@ -1336,6 +1337,8 @@ function summarize(m) {
       return 'Sticker';
     case 'poll':
       return `Poll: ${m.poll?.question ?? ''}`;
+    case 'contact':
+      return `Contact: ${m.contact?.name ?? 'Contact'}`;
     case 'viewOnce':
       return 'View-once media';
     case 'deleted':
@@ -2421,6 +2424,8 @@ function renderMessage(m, prev, next) {
   }
   if (m.kind === 'poll' && m.poll) {
     bubble.append(renderPoll(m));
+  } else if (m.kind === 'contact' && m.contact) {
+    bubble.append(renderContactCard(m));
   } else if (m.kind === 'sticker') {
     bubble.classList.add('sticker-bubble');
     bubble.append(renderSticker(m));
@@ -4726,6 +4731,131 @@ function renderBlockChooser() {
         }))
   );
 }
+
+// --- contact cards (decision F41) -------------------------------------------
+
+// A shared contact, as Signal's bubble shows it, with the numbers, emails
+// and addresses its detail page lists, and Message when they're on Signal.
+function renderContactCard(m) {
+  const card = m.contact;
+  const box = el('div', 'contact-card');
+  const head = el('div', 'contact-card-head');
+  if (card.hasAvatar) {
+    const img = el('img', 'avatar');
+    img.alt = '';
+    img.style.width = img.style.height = '44px';
+    img.src = `api/thumbnail?${new URLSearchParams({
+      messageId: m.id,
+      contact: '1',
+      width: String(previewWidth(44)),
+    })}`;
+    head.append(img);
+  } else {
+    const blank = el('span', 'avatar contact-card-initials', initials(card.name ?? ''));
+    blank.style.width = blank.style.height = '44px';
+    head.append(blank);
+  }
+  const names = el('div', 'contact-card-names');
+  names.append(el('span', 'title', card.name ?? 'Contact'));
+  if (card.organization && card.organization !== card.name) {
+    names.append(el('span', 'sub', card.organization));
+  }
+  head.append(names);
+  box.append(head);
+  const fields = [...card.numbers, ...card.emails, ...card.addresses];
+  if (fields.length > 0) {
+    const list = el('dl', 'contact-card-fields');
+    for (const field of fields) {
+      list.append(el('dt', null, field.label), el('dd', null, field.value));
+    }
+    box.append(list);
+  }
+  if (card.conversationId && card.conversationId !== selectedId) {
+    const message = el('button', 'contact-card-message', 'Message');
+    message.type = 'button';
+    message.addEventListener('click', ev => {
+      ev.stopPropagation();
+      openPerson(card.conversationId, { title: card.name ?? 'Contact' });
+    });
+    box.append(message);
+  }
+  return box;
+}
+
+let contactCandidates = [];
+
+async function openContactChooser() {
+  if (!selectedId) {
+    return;
+  }
+  let contacts = [];
+  try {
+    ({ contacts } = await api('api/contacts'));
+  } catch (error) {
+    toast(`Couldn't load contacts (${error.code ?? error.message}).`);
+    return;
+  }
+  contactCandidates = contacts
+    .filter(c => !c.noteToSelf)
+    .map(c => ({ ...contactAsChat(c), match: c }))
+    .sort((a, b) => displayTitle(a).localeCompare(displayTitle(b)));
+  $('contact-chooser-search').value = '';
+  renderContactChooser();
+  $('contact-chooser').hidden = false;
+  $('contact-chooser-search').focus();
+}
+
+function closeContactChooser() {
+  $('contact-chooser').hidden = true;
+  contactCandidates = [];
+}
+
+function renderContactChooser() {
+  const query = $('contact-chooser-search').value.trim();
+  const found = contactCandidates.filter(c => matchesContact(c.match, query));
+  $('contact-chooser-list').replaceChildren(
+    ...(found.length === 0
+      ? [el('li', 'sub', 'No contacts')]
+      : found.map(c => {
+          const li = el('li');
+          li.append(
+            conversationAvatar(c, 36),
+            el('span', 'title', displayTitle(c))
+          );
+          li.addEventListener('click', () => {
+            if (confirm(`Send ${displayTitle(c)}'s contact card to this chat?`)) {
+              closeContactChooser();
+              sendContactCard(c.id);
+            }
+          });
+          return li;
+        }))
+  );
+}
+
+// The card Signal's Share contact dialog makes: name, photo and phone
+// number; their nickname and your note about them stay private.
+async function sendContactCard(contactConversationId) {
+  const conversationId = selectedId;
+  if (!conversationId) {
+    return;
+  }
+  $('send-error').hidden = true;
+  try {
+    await api('api/sendContact', { conversationId, contactConversationId });
+    $('messages').scrollTop = $('messages').scrollHeight;
+  } catch (error) {
+    showError(
+      SEND_ERRORS[error.reason] ?? `Not sent (${error.code ?? error.message}).`
+    );
+  }
+}
+
+$('contact-open').append(icon('contact'));
+$('contact-open').addEventListener('click', openContactChooser);
+$('contact-chooser-close').append(icon('close'));
+$('contact-chooser-close').addEventListener('click', closeContactChooser);
+$('contact-chooser-search').addEventListener('input', renderContactChooser);
 
 $('block-chooser-close').append(icon('close'));
 $('block-chooser-close').addEventListener('click', closeBlockChooser);
@@ -8952,6 +9082,8 @@ document.addEventListener('keydown', e => {
       closeSchedule();
     } else if (!$('scheduled').hidden) {
       closeScheduledList();
+    } else if (!$('contact-chooser').hidden) {
+      closeContactChooser();
     } else if (!$('block-chooser').hidden) {
       closeBlockChooser();
     } else if (!$('forward').hidden) {

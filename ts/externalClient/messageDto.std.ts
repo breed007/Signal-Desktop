@@ -8,6 +8,16 @@ import type { AttachmentType } from '../types/Attachment.std.ts';
 import { isDownloaded } from '../util/Attachment.std.ts';
 import type { MessagePollVoteType } from '../types/Polls.dom.ts';
 import {
+  AddressType,
+  ContactFormType,
+  getDisplayName,
+} from '../types/EmbeddedContact.std.ts';
+import type {
+  Email,
+  Phone,
+  PostalAddress,
+} from '../types/EmbeddedContact.std.ts';
+import {
   isGIF,
   isImageAttachment,
   isVoiceMessage,
@@ -15,6 +25,8 @@ import {
 import type {
   AttachmentMetadataDTO,
   AuthorDTO,
+  ContactCardDTO,
+  ContactCardFieldDTO,
   MentionDTO,
   MessageDTO,
   MessageKindType,
@@ -63,6 +75,7 @@ export type MessageSourceType = Pick<
   | 'sendStateByConversationId'
   | 'preview'
   | 'poll'
+  | 'contact'
 >;
 
 export type MessageDtoContextType = Readonly<{
@@ -112,10 +125,83 @@ function getKind(message: MessageSourceType): MessageKindType {
   if (message.poll) {
     return MessageKind.Poll;
   }
+  if (message.contact?.length) {
+    return MessageKind.Contact;
+  }
   if (message.body || message.attachments?.length) {
     return MessageKind.Text;
   }
   return MessageKind.Unsupported;
+}
+
+// Signal's labels for a card's numbers, emails and addresses.
+function formLabel(field: Phone | Email): string {
+  switch (field.type) {
+    case ContactFormType.HOME:
+      return 'Home';
+    case ContactFormType.MOBILE:
+      return 'Mobile';
+    case ContactFormType.WORK:
+      return 'Work';
+    default:
+      return field.label || 'Other';
+  }
+}
+
+function addressLabel(address: PostalAddress): string {
+  switch (address.type) {
+    case AddressType.HOME:
+      return 'Home';
+    case AddressType.WORK:
+      return 'Work';
+    default:
+      return address.label || 'Other';
+  }
+}
+
+function toFields<T extends Phone | Email>(
+  fields: ReadonlyArray<T> | undefined
+): Array<ContactCardFieldDTO> {
+  return (fields ?? [])
+    .filter(field => field.value)
+    .map(field => ({ value: field.value, label: formLabel(field) }));
+}
+
+// The first card, as Signal's bubble shows only the first.
+function toContact(
+  message: MessageSourceType,
+  context: MessageDtoContextType
+): ContactCardDTO | null {
+  const contact = message.contact?.[0];
+  if (!contact) {
+    return null;
+  }
+  return {
+    name: getDisplayName(contact) ?? null,
+    organization: contact.organization || null,
+    numbers: toFields(contact.number),
+    emails: toFields(contact.email),
+    addresses: (contact.address ?? [])
+      .map(address => ({
+        value: [
+          address.street,
+          address.pobox,
+          address.neighborhood,
+          address.city,
+          address.region,
+          address.postcode,
+          address.country,
+        ]
+          .filter(Boolean)
+          .join(', '),
+        label: addressLabel(address),
+      }))
+      .filter(address => address.value),
+    hasAvatar: Boolean(contact.avatar?.avatar?.path),
+    conversationId: contact.aci
+      ? context.resolveConversationId(contact.aci)
+      : null,
+  };
 }
 
 // The same reading of votes as the timeline (getPollForMessage).
@@ -443,6 +529,7 @@ export function toMessageDTO(
     formatting: hidden ? [] : toFormatting(message),
     previews: hidden ? [] : toPreviews(message),
     poll: hidden ? null : toPoll(message, context),
+    contact: hidden ? null : toContact(message, context),
     ...(hidden
       ? { canEdit: false, canDeleteForEveryone: false }
       : context.getActions(message)),

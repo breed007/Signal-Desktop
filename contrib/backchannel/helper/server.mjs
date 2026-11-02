@@ -292,6 +292,9 @@ export function createWebServer({
     if (url.searchParams.get('quote') === '1') {
       return { messageId, quote: true };
     }
+    if (url.searchParams.get('contact') === '1') {
+      return { messageId, contact: true };
+    }
     if (url.searchParams.has('preview')) {
       return { messageId, preview: Number(url.searchParams.get('preview')) };
     }
@@ -593,6 +596,19 @@ export function createWebServer({
         packId,
         stickerId,
         ...(quoteMessageId ? { quoteMessageId } : {}),
+      });
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/sendContact') {
+      const { conversationId, contactConversationId, phone, nickname, note } =
+        await readJson(req);
+      const result = await bridge.call('messages.sendContact', {
+        conversationId,
+        contactConversationId,
+        phone: phone !== false,
+        nickname: nickname === true,
+        note: note === true,
       });
       sendJson(res, 200, result);
       return;

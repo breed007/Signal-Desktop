@@ -82,6 +82,7 @@ describe('externalClient/messageDto', () => {
       formatting: [],
       previews: [],
       poll: null,
+      contact: null,
       canEdit: false,
       canDeleteForEveryone: false,
       quote: null,
@@ -411,6 +412,41 @@ describe('externalClient/messageDto', () => {
       toMessageDTO({ ...incoming, body: undefined }, context)?.kind,
       MessageKind.Unsupported
     );
+  });
+
+  it('shows the first contact card with its labels and our chat', () => {
+    const dto = toMessageDTO(
+      {
+        ...incoming,
+        body: undefined,
+        contact: [
+          {
+            name: { givenName: 'Bob', familyName: 'Builder' },
+            organization: 'Fix-It',
+            number: [
+              { value: '+15555550101', type: 2 },
+              { value: '', type: 1 },
+            ],
+            email: [{ value: 'bob@example.com', type: 4, label: 'Site' }],
+            address: [{ type: 2, street: '1 Main St', city: 'Town' }],
+            aci: BOB_ACI,
+            nickname: undefined,
+            note: undefined,
+          },
+        ],
+      },
+      context
+    );
+    assert.strictEqual(dto?.kind, MessageKind.Contact);
+    assert.deepEqual(dto?.contact, {
+      name: 'Bob Builder',
+      organization: 'Fix-It',
+      numbers: [{ value: '+15555550101', label: 'Mobile' }],
+      emails: [{ value: 'bob@example.com', label: 'Site' }],
+      addresses: [{ value: '1 Main St, Town', label: 'Work' }],
+      hasAvatar: false,
+      conversationId: 'conv-bob',
+    });
   });
 
   it('lists edit history versions, newest first, only for text', () => {
