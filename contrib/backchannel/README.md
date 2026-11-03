@@ -59,7 +59,11 @@ Backchannel does. Each new one is added here when it ships.
 - **Markdown shortcuts and SMS-ready copies.** Type \*bold\*,
   \_italic\_, \_\*bold italic\*\_, \~strikethrough\~ or \`monospace\` and the
   style applies as you type (Backspace right after undoes it), or as you
-  paste text that has them. Copying
+  paste text that has them. Markdown pasted in (from an LLM, say) turns
+  into what every Signal app shows: `* item` is a • bullet (indented ones
+  nest), `# Heading` a bold line, `> quote` an italic quote, code fences
+  monospace, links "text (url)"; typing `* ` starts a bullet and Shift+Enter
+  continues the list. Copying
   styled text puts Unicode bold, italic and strikethrough letters on the
   clipboard, so the styles survive a paste into an SMS or anywhere else,
   and pasting such text into Backchannel turns it back into Signal's styles.

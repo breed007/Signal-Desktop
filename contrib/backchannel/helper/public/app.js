@@ -6634,7 +6634,7 @@ function insertPlain(text) {
   if (inserted.length > 1) {
     const chars = readCompose();
     chars.splice(start, end - start, ...inserted);
-    const done = markdownPass(chars, start, start + inserted.length);
+    const done = fullMarkdownPass(chars, start, start + inserted.length);
     drawCompose(done);
     composeBox().focus();
     selectOffsets(start + inserted.length - (chars.length - done.length));
@@ -6646,8 +6646,8 @@ function insertPlain(text) {
 
 // The body as Signal wants it: U+FFFC for each mention, and style ranges.
 function composeForSend() {
-  // Marks still in the text apply now (decision F33).
-  const chars = markdownPass(readCompose());
+  // Marks still in the text apply now (decisions F33, F42).
+  const chars = fullMarkdownPass(readCompose());
   // Ranges count UTF-16 units, as Signal's do.
   let body = '';
   const mentions = [];
@@ -7601,9 +7601,186 @@ function markdownPass(chars, from = 0, to = chars.length) {
       ...inner.map(c => ({ ...c, styles: new Set([...c.styles, style]) }))
     );
     end -= 2;
-    // Look again from here: the text inside may hold another pair.
+    // Look again from just before: the text inside may hold another pair,
+    // and **x** closes its outer pair around the inner one.
+    i = Math.max(from, i - 1);
   }
   return out;
+}
+
+// Markdown's block marks (decision F42), turned into what every Signal app
+// shows: Signal carries only bold, italic, strikethrough, monospace and
+// spoiler ranges, so the rest becomes plain characters. "* item" is a •
+// bullet, indented ones nest (◦, then ▪); "- " and "1. " stay as typed;
+// "# Heading" is a bold line; "> quote" is ▍ and italic; text between ```
+// fences is monospace; [text](url) is "text (url)".
+const BULLETS = ['•', '◦', '▪'];
+
+function bulletFor(indent) {
+  return BULLETS[Math.ceil(indent / 4) % BULLETS.length];
+}
+
+function lineText(line) {
+  return line.map(c => c.ch).join('');
+}
+
+function withStyle(chars, style) {
+  return chars.map(c =>
+    c.mention ? c : { ...c, styles: new Set([...c.styles, style]) }
+  );
+}
+
+// [text](url) as "text (url)", or just the url when the text is the url.
+function markdownLinks(line) {
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    const c = line[i];
+    if (c.ch === '[' && !c.mention && !c.styles.has('monospace')) {
+      const close = line.findIndex(
+        (d, j) => j > i && (d.ch === ']' || d.ch === '[')
+      );
+      if (close > i + 1 && line[close].ch === ']' && line[close + 1]?.ch === '(') {
+        const end = line.findIndex(
+          (d, j) => j > close + 1 && (d.ch === ')' || /\s/.test(d.ch))
+        );
+        if (end > close + 2 && line[end].ch === ')') {
+          const text = line.slice(i + 1, close);
+          const url = line.slice(close + 2, end);
+          if (lineText(text) === lineText(url)) {
+            out.push(...url);
+          } else {
+            out.push(...text, ...charsOf(' ('), ...url, ...charsOf(')'));
+          }
+          i = end + 1;
+          continue;
+        }
+      }
+    }
+    out.push(c);
+    i += 1;
+  }
+  return out;
+}
+
+function blockMarkdownLine(line) {
+  const text = lineText(line);
+  let m = /^( *)\* (?=\S)/.exec(text);
+  if (m) {
+    return [
+      ...charsOf(`${m[1]}${bulletFor(m[1].length)} `),
+      ...markdownLinks(line.slice(m[0].length)),
+    ];
+  }
+  m = /^ *#{1,6} +(?=\S)/.exec(text);
+  if (m) {
+    return withStyle(markdownLinks(line.slice(m[0].length)), 'bold');
+  }
+  m = /^ *> ?/.exec(text);
+  if (m && line.length > m[0].length) {
+    return [
+      ...charsOf('▍ '),
+      ...withStyle(markdownLinks(line.slice(m[0].length)), 'italic'),
+    ];
+  }
+  return markdownLinks(line);
+}
+
+// Over the lines that from..to touches; returns the new characters.
+function blockMarkdownPass(chars, from = 0, to = chars.length) {
+  let start = from;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  let end = to;
+  while (end < chars.length && chars[end].ch !== '\n') {
+    end += 1;
+  }
+  const lines = [[]];
+  for (const c of chars.slice(start, end)) {
+    if (c.ch === '\n') {
+      lines.push([]);
+    } else {
+      lines.at(-1).push(c);
+    }
+  }
+  const out = [];
+  let inCode = false;
+  lines.forEach((line, n) => {
+    const fence = /^ *```/.test(lineText(line));
+    if (fence) {
+      inCode = !inCode;
+      return;
+    }
+    if (out.length > 0 || n > 0) {
+      out.push({ ch: '\n', styles: new Set() });
+    }
+    out.push(
+      ...(inCode ? withStyle(line, 'monospace') : blockMarkdownLine(line))
+    );
+  });
+  // A fence on the first line leaves a leading break; drop it.
+  if (lines.length > 0 && /^ *```/.test(lineText(lines[0])) && out[0]?.ch === '\n') {
+    out.shift();
+  }
+  return [...chars.slice(0, start), ...out, ...chars.slice(end)];
+}
+
+// Both passes, block marks first so "* item" is a bullet, not an opening *.
+function fullMarkdownPass(chars, from = 0, to = chars.length) {
+  const blocked = blockMarkdownPass(chars, from, to);
+  return markdownPass(blocked, from, to + (blocked.length - chars.length));
+}
+
+// Typing "* " at the start of a line makes a bullet at once.
+function applyBulletShortcut() {
+  const at = selectionOffsets();
+  if (!at || at.start !== at.end) {
+    return false;
+  }
+  const chars = readCompose();
+  let start = at.start;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  const typed = lineText(chars.slice(start, at.start));
+  const m = /^( *)\* $/.exec(typed);
+  if (!m) {
+    return false;
+  }
+  const prefix = charsOf(`${m[1]}${bulletFor(m[1].length)} `);
+  chars.splice(start, at.start - start, ...prefix);
+  drawCompose(chars);
+  selectOffsets(start + prefix.length);
+  return true;
+}
+
+// A new line in a list starts the next item (the same bullet, or the next
+// number); on an empty item it ends the list instead.
+function insertNewline() {
+  const at = selectionOffsets() ?? composeSelection;
+  const chars = readCompose();
+  const caret = at?.start ?? chars.length;
+  let start = caret;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  const line = lineText(chars.slice(start, caret));
+  const m = /^( *)(?:([•◦▪]) |(\d+)([.)]) )(.*)$/su.exec(line);
+  if (!m || (at && at.start !== at.end)) {
+    insertPlain('\n');
+    return;
+  }
+  if (m[5].trim() === '' && caret === start + line.length) {
+    spliceCompose(start, caret, []);
+    onComposeInput();
+    return;
+  }
+  const next = m[2]
+    ? `${m[1]}${m[2]} `
+    : `${m[1]}${Number(m[3]) + 1}${m[4]} `;
+  spliceCompose(caret, caret, charsOf(`\n${next}`));
+  onComposeInput();
 }
 
 function undoMarkdown() {
@@ -7846,6 +8023,9 @@ function wireComposeBox(box, onInput) {
     }
     markdownUndo = null;
     markdownCaret = null;
+    if (e.inputType === 'insertText' && e.data === ' ' && !e.isComposing) {
+      applyBulletShortcut();
+    }
   });
   box.addEventListener('input', onInput);
   box.addEventListener('blur', () => {
@@ -7926,7 +8106,7 @@ function wireComposeBox(box, onInput) {
       if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        insertPlain('\n');
+        insertNewline();
         return;
       }
       if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey && undoMarkdown()) {
@@ -8466,7 +8646,7 @@ $('forward-compose').addEventListener('paste', e => {
 $('forward-compose').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
-    insertPlain('\n');
+    insertNewline();
   }
 });
 $('forward-send').addEventListener('click', sendForward);
