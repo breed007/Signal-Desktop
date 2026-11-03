@@ -228,3 +228,131 @@ Upstream files touched: **one**, `ts/components/About.dom.tsx`, marked
 - Don't run `asar extract-file` from the repo root: it writes the file to
   the current folder and overwrote `package.json` once. Extract into a
   scratch folder.
+
+## M2: bridge on, helper inside, page in its own window (2026-11-02)
+
+Result: **the plumbing works; the linked-account test is still to do.**
+In both a dev run and the packaged app, with no environment variables, the
+bridge turns on, the helper starts inside the app, connects, and reports
+`unlinked`. The page and Signal's fonts are served from inside `app.asar`.
+Quitting stops the helper and closes its port. The Backchannel window only
+opens after linking and approval, so it hasn't been seen yet. That's the
+real-account walkthrough below.
+
+### How it fits together
+
+```
+Backchannel window ──http://127.0.0.1:<port>/<token>/──▶ helper ──socket──▶ bridge ──▶ Signal
+(sandboxed, own session)                     (Electron utility process)
+```
+
+- **Build-time switch.** `build.sh` writes `"backchannelApp": true` into the
+  packaged `config/local-production.json`. `ts/backchannel/config.main.ts`
+  reads it, and `#isEnabled` in `ts/main/externalClientMain.main.ts`
+  returns true for it. Signal's approval dialog is unchanged.
+- **Helper.** `ts/backchannel/app.main.ts` runs
+  `contrib/backchannel/helper/backchannel.mjs` with
+  `utilityProcess.fork`, using the container's flags except
+  `--bind 127.0.0.1` and `--config <profile>/backchannel`. It uses port 47830,
+  or the next free one up to 47839. The helper's output goes to Signal's log
+  under `[backchannel]`; the token is never logged because the output isn't
+  a terminal. If the helper exits, the app restarts it after 1 s, 5 s, then
+  every 30 s. On quit it gets SIGTERM and runs its own shutdown.
+- **Windows.** The helper posts its bridge state to the app
+  (`process.parentPort`, three lines in `backchannel.mjs`). The first
+  `ready` in a run opens the Backchannel window and hides Signal's. After
+  that:
+  - `unlinked`, `denied` or `keyMismatch` brings Signal's window back.
+  - Signal shows its own window for the approval dialog.
+  - Window > Show (⌘⇧0) brings back Signal's window.
+  - The Dock menu has "Backchannel" and "Signal Window".
+  - Clicking the Dock icon brings back the Backchannel window.
+  - Closing the Backchannel window hides it, so its notifications keep
+    coming.
+- **The window itself.**
+  - It uses its own session (`persist:backchannel`), sandboxed, with no
+    Node.js access.
+  - It may only ask for notifications, copying to the clipboard, the
+    microphone (for voice notes, audio only) and full-screen.
+  - It can't navigate away from its own page. Web links open in the
+    default browser.
+- **Dock.** The page's title, "(3) Backchannel", sets the Dock badge.
+  Signal's own badge count is ignored once the Backchannel window is the
+  main one. Notifications are the page's own web notifications, which macOS
+  shows as Backchannel's.
+
+Upstream files touched in M2: `app/main.main.ts` (an import plus three
+marked hooks: start, Dock click, badge) and
+`ts/main/externalClientMain.main.ts` (an import plus one marked check). New:
+`ts/backchannel/`.
+
+### Threat model
+
+Read against `docs/external-client-threat-model.md`. Two things change
+for the Backchannel app only. Signal-the-app and the container are
+unchanged.
+
+1. **§4 point 4, "off unless the user turns it on".** In the Backchannel
+   app the bridge is on from the start. Installing Backchannel is the
+   opt-in: nobody runs it except to use the bridge. The switch sits inside
+   the signed, integrity-checked `app.asar`, not in a plaintext file in the
+   profile, so T12's goal (a plaintext edit can't turn it on) holds. The
+   approval dialog (B4) still guards every client, including the built-in
+   helper, which is approved once.
+2. **A2, "no TCP/HTTP surface for web pages".** The app now always runs the
+   helper's loopback HTTP server, which other local programs and browser
+   pages can reach. That's the same surface the helper already has
+   everywhere it runs (helper README, "Why the local web server is safe
+   enough"), but now it's always on in this app. Its guards were checked on
+   the packaged build:
+   - Without the token, or with a wrong one: 404.
+   - A foreign `Host` (DNS rebinding): 421.
+   - A foreign `Origin`: 403.
+   - It listens on `127.0.0.1` only.
+
+   The token and `key.json` are mode 0600 in a 0700 folder inside the app's
+   profile. A3, another user on the same Mac who learns the token, remains
+   the residual risk the helper README already names.
+
+Nothing else changes: same user, same capabilities, no new network
+listener, and the bridge socket and its authentication are untouched.
+
+### Testing it on a real account
+
+The account test isn't done yet. With your phone at hand:
+
+1. Build: `contrib/backchannel/mac/build.sh`. For a truly fresh install,
+   first move `~/Library/Application Support/Backchannel` aside.
+2. Open `release/mac-arm64/Backchannel.app`. Signal's window shows
+   "Link your account".
+3. On the phone: Signal > Settings > Linked devices > Link new device, and
+   scan the code. Pick whether to bring over history.
+4. When it has synced, Signal shows the approval dialog for "Backchannel".
+   Check the capability list, then Allow.
+5. The Backchannel window opens and Signal's window hides. Check:
+   - Chats and photos load, and you can send and receive.
+   - The browser asks once for notifications. Allow, then send yourself a
+     message from the phone with the window in the background: a
+     Backchannel notification appears, and clicking it opens the chat.
+   - The Dock badge matches the unread count.
+   - The Dock menu, Window > Show (⌘⇧0) and the Dock icon switch windows
+     as described above.
+   - Quit and reopen: the Backchannel window comes back without another
+     approval.
+6. Work through the "Beyond Signal Desktop" list in
+   `contrib/backchannel/README.md`. Schedule a message two minutes out and
+   leave the app running: it should send on time.
+7. Send the log (Help > Debug Log, or
+   `~/Library/Application Support/Backchannel/logs/`) if anything fails.
+   Lines start with `[backchannel]`.
+
+### Known gaps
+
+- The large emoji font (`fonts/emoji-large.woff2`) returned 404 before
+  linking. The helper gets it from Signal's copy in the profile or
+  downloads it; check it after linking.
+- There's no right-click menu (spellcheck, copy, paste) in the Backchannel
+  window, beyond what the page draws itself.
+- Window size and position aren't remembered between launches.
+- At each launch Signal's window shows briefly before the Backchannel
+  window takes over.

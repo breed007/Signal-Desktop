@@ -24,14 +24,18 @@ export SIGNAL_ENV=production
 
 pnpm run generate
 
-# Signal's updater installs only Signal-signed builds from Signal's server, so
-# it's off here and Homebrew or a new DMG brings updates (CLAUDE.md rule 5).
-# local-production.json is generated, git-ignored and packaged with the app.
+# local-production.json is generated, git-ignored and packaged in app.asar.
+# - updatesEnabled: Signal's updater installs only Signal-signed builds from
+#   Signal's server, so it's off and Homebrew or a new DMG brings updates
+#   (CLAUDE.md rule 5).
+# - backchannelApp: turns the bridge on and starts the helper and the
+#   Backchannel window (ts/backchannel/).
 node -e '
   const fs = require("node:fs");
   const file = "config/local-production.json";
   const config = JSON.parse(fs.readFileSync(file, "utf8"));
   config.updatesEnabled = false;
+  config.backchannelApp = true;
   fs.writeFileSync(file, JSON.stringify(config));
 '
 

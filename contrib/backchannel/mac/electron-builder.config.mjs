@@ -28,6 +28,13 @@ export default {
     productName: 'Backchannel',
   },
   directories: { output: 'release' },
+  // The helper and its page run from inside app.asar, so the asar integrity
+  // check covers them too (ts/backchannel/app.main.ts starts the helper).
+  files: [
+    ...base.files,
+    'contrib/backchannel/helper/**',
+    '!contrib/backchannel/helper/test/**',
+  ],
   mac: {
     ...base.mac,
     artifactName: 'Backchannel-mac-${arch}-${version}.${ext}',

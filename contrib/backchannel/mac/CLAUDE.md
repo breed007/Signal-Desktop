@@ -25,6 +25,7 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
 | `contrib/backchannel/helper/` | The helper (Node, `backchannel.mjs`, `server.mjs`, `bridge.mjs`) and the page (`public/`). |
 | `contrib/backchannel/patches/0001-enable-bridge-from-env.patch` | How the container turns the bridge on (`SIGNAL_ENABLE_EXTERNAL_CLIENTS=1`, packaged or not). Unpackaged dev runs honor the variable without it. Patches 0002 to 0004 handle importing a local backup at link time. |
 | `contrib/backchannel/Dockerfile`, `entrypoint.sh` | How the container starts Signal and the helper today. Read them to see the helper's flags. |
+| `ts/backchannel/` | The Backchannel app inside Signal: the build-time switch (`config.main.ts`) and the helper, window and Dock wiring (`app.main.ts`). |
 | `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, BUILD-NOTES.md. |
 | `.github/workflows/mac.yml` | New: build, sign, notarize, publish. |
 | `docs/external-client-*.md` | Architecture, threat model, decisions. Read before changing anything security-related. |
