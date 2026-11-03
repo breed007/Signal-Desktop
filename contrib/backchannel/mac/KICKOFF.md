@@ -36,7 +36,8 @@ code, and BUILD-NOTES.md lets someone repeat the build.
 Make the Mac build its own app, per CLAUDE.md rules 3 to 5 and 8:
 productName "Backchannel", a Backchannel app ID (ask me for the bundle ID
 before using one), its own data folder, the Backchannel icon from
-contrib/backchannel/helper/public/icon.svg turned into an .icns, arm64
+contrib/backchannel/helper/public/icon.svg turned into a Mac icon (upstream
+uses an Icon Composer .icon at build/icons/mac/AppIcon.icon), arm64
 only, and the updater pointed away from Signal's update server (propose
 GitHub Releases or off; ask which). Keep every change to upstream files
 small and marked // BACKCHANNEL:, and put Mac-only config under
