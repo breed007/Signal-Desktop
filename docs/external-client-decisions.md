@@ -1040,13 +1040,16 @@ Signal 8.34's release notes; viewing cards was already on the list.
 DECISION: the page turns markdown's block marks into what Signal carries,
 since the protocol has only bold, italic, strikethrough, monospace and
 spoiler ranges: `* item` becomes a • bullet and indented ones nest (◦,
-then ▪); `- ` and `1. ` stay as typed; `# Heading` becomes a bold line;
+then ▪; a tab, two spaces or an em space is one level, written as em
+spaces, which no Signal app collapses); `* [ ] ` and `* [x] ` add ☐ and ☑;
+`- ` stays a dash; `1. ` keeps its number; a line of ---, *** or ___ is a
+rule; `__bold__` is bold too; `# Heading` becomes a bold line;
 `> quote` becomes ▍ plus italic; text between ``` fences becomes monospace;
 `[text](url)` becomes "text (url)"; `**bold**` works. It applies on paste
 and at send, typing `* ` at a line start makes a bullet at once, and
 Shift+Enter in a list starts the next item (or ends the list on an empty
-one). Every Signal app shows the result, not just Backchannel. It matches
-Backchannel Android.
+one). Every Signal app shows the result, not just Backchannel. The rules
+are Backchannel Android's (Markdown.kt blocks()), so both clients agree.
 
 WHY: Mike (2026-11-03): "full-on markdown capability", "* be a bullet, not
 -", and pasted text from LLMs should convert itself.

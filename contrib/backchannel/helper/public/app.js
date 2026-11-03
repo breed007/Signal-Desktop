@@ -7610,14 +7610,33 @@ function markdownPass(chars, from = 0, to = chars.length) {
 
 // Markdown's block marks (decision F42), turned into what every Signal app
 // shows: Signal carries only bold, italic, strikethrough, monospace and
-// spoiler ranges, so the rest becomes plain characters. "* item" is a •
-// bullet, indented ones nest (◦, then ▪); "- " and "1. " stay as typed;
-// "# Heading" is a bold line; "> quote" is ▍ and italic; text between ```
-// fences is monospace; [text](url) is "text (url)".
+// spoiler ranges, so the rest becomes plain characters. The rules are
+// Backchannel Android's (Markdown.kt blocks()): "* item" is a • bullet and
+// indented ones nest (◦, then ▪), "* [ ] " and "* [x] " add ☐ and ☑; "- "
+// stays a dash; "1. " keeps its number; "# Heading" is a bold line;
+// "> quote" is ▍ and italic; ---, *** or ___ alone is a rule; text between
+// ``` fences is monospace; **x** and __x__ are bold; [text](url) is
+// "text (url)". Indents become em spaces, which no Signal app collapses.
 const BULLETS = ['•', '◦', '▪'];
+const EM_SPACE = '\u2003';
 
-function bulletFor(indent) {
-  return BULLETS[Math.ceil(indent / 4) % BULLETS.length];
+// A tab, two spaces or an em space is one level.
+function indentLevel(ws) {
+  let level = 0;
+  let spaces = 0;
+  for (const ch of ws) {
+    if (ch === ' ') {
+      spaces += 1;
+    } else {
+      level += 1;
+    }
+  }
+  return level + Math.floor(spaces / 2);
+}
+
+function bulletPrefix(ws) {
+  const level = indentLevel(ws);
+  return `${EM_SPACE.repeat(level)}${BULLETS[level % BULLETS.length]} `;
 }
 
 function lineText(line) {
@@ -7663,27 +7682,84 @@ function markdownLinks(line) {
   return out;
 }
 
+// **x** and __x__ as bold, before the single marks are read.
+function doubleMarks(line) {
+  const out = [...line];
+  const isDouble = (i, mark) =>
+    out[i]?.ch === mark &&
+    out[i + 1]?.ch === mark &&
+    !out[i].mention &&
+    !out[i].styles.has('monospace');
+  let i = 0;
+  while (i < out.length - 1) {
+    const mark = out[i].ch;
+    if ((mark !== '*' && mark !== '_') || !isDouble(i, mark)) {
+      i += 1;
+      continue;
+    }
+    let close = i + 2;
+    while (close < out.length - 1 && !isDouble(close, mark)) {
+      close += 1;
+    }
+    const inner = out.slice(i + 2, close);
+    if (
+      close >= out.length - 1 ||
+      inner.length === 0 ||
+      /\s/.test(inner[0].ch) ||
+      /\s/.test(inner.at(-1).ch)
+    ) {
+      i += 2;
+      continue;
+    }
+    out.splice(i, close - i + 2, ...withStyle(inner, 'bold'));
+    i += inner.length;
+  }
+  return out;
+}
+
+function inlineMarks(line) {
+  return markdownLinks(doubleMarks(line));
+}
+
 function blockMarkdownLine(line) {
   const text = lineText(line);
-  let m = /^( *)\* (?=\S)/.exec(text);
+  let m = /^([ \t\u2003]*)\* (?:\[([ xX])\] )?(?=\S)/.exec(text);
+  if (m) {
+    const box = m[2] === undefined ? '' : m[2] === ' ' ? '☐ ' : '☑ ';
+    return [
+      ...charsOf(`${bulletPrefix(m[1])}${box}`),
+      ...inlineMarks(line.slice(m[0].length)),
+    ];
+  }
+  m = /^([ \t\u2003]*)(\d+[.)] )(?=\S)/.exec(text);
   if (m) {
     return [
-      ...charsOf(`${m[1]}${bulletFor(m[1].length)} `),
-      ...markdownLinks(line.slice(m[0].length)),
+      ...charsOf(`${EM_SPACE.repeat(indentLevel(m[1]))}${m[2]}`),
+      ...inlineMarks(line.slice(m[0].length)),
     ];
   }
   m = /^ *#{1,6} +(?=\S)/.exec(text);
   if (m) {
-    return withStyle(markdownLinks(line.slice(m[0].length)), 'bold');
+    return withStyle(inlineMarks(line.slice(m[0].length)), 'bold');
   }
-  m = /^ *> ?/.exec(text);
-  if (m && line.length > m[0].length) {
+  m = /^ *> ?(?=\S)/.exec(text);
+  if (m && !/^ *>\S/.test(text)) {
     return [
       ...charsOf('▍ '),
-      ...withStyle(markdownLinks(line.slice(m[0].length)), 'italic'),
+      ...withStyle(inlineMarks(line.slice(m[0].length)), 'italic'),
     ];
   }
-  return markdownLinks(line);
+  if (/^ *(?:-{3,}|\*{3,}|_{3,}) *$/.test(text)) {
+    return charsOf('──────────');
+  }
+  m = /^[ \t\u2003]+/.exec(text);
+  if (m && m[0].length < text.length) {
+    return [
+      ...charsOf(EM_SPACE.repeat(indentLevel(m[0]))),
+      ...inlineMarks(line.slice(m[0].length)),
+    ];
+  }
+  return inlineMarks(line);
 }
 
 // Over the lines that from..to touches; returns the new characters.
@@ -7744,11 +7820,11 @@ function applyBulletShortcut() {
     start -= 1;
   }
   const typed = lineText(chars.slice(start, at.start));
-  const m = /^( *)\* $/.exec(typed);
+  const m = /^([ \t\u2003]*)\* $/.exec(typed);
   if (!m) {
     return false;
   }
-  const prefix = charsOf(`${m[1]}${bulletFor(m[1].length)} `);
+  const prefix = charsOf(bulletPrefix(m[1]));
   chars.splice(start, at.start - start, ...prefix);
   drawCompose(chars);
   selectOffsets(start + prefix.length);
@@ -7766,7 +7842,7 @@ function insertNewline() {
     start -= 1;
   }
   const line = lineText(chars.slice(start, caret));
-  const m = /^( *)(?:([•◦▪]) |(\d+)([.)]) )(.*)$/su.exec(line);
+  const m = /^([\u2003]*)(?:([•◦▪] (?:[☐☑] )?)|(\d+)([.)]) )(.*)$/su.exec(line);
   if (!m || (at && at.start !== at.end)) {
     insertPlain('\n');
     return;
@@ -7777,7 +7853,7 @@ function insertNewline() {
     return;
   }
   const next = m[2]
-    ? `${m[1]}${m[2]} `
+    ? `${m[1]}${m[2].replace('☑', '☐')}`
     : `${m[1]}${Number(m[3]) + 1}${m[4]} `;
   spliceCompose(caret, caret, charsOf(`\n${next}`));
   onComposeInput();
