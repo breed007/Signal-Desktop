@@ -1050,6 +1050,9 @@ and at send, typing `* ` at a line start makes a bullet at once, and
 Shift+Enter in a list starts the next item (or ends the list on an empty
 one). Every Signal app shows the result, not just Backchannel. The rules
 are Backchannel Android's (Markdown.kt blocks()), so both clients agree.
+Signal can't send a hanging indent, so the page draws one: a received or
+sent list line (bullet, number, dash) wraps under its text, not under its
+marker. That is display only; other Signal apps wrap it their own way.
 
 WHY: Mike (2026-11-03): "full-on markdown capability", "* be a bullet, not
 -", and pasted text from LLMs should convert itself.

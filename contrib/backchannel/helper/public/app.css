@@ -2111,6 +2111,18 @@ button {
 }
 
 /* Polls, laid out like Signal's poll bubble. */
+/* A message with a list is drawn a line at a time, so list items hang
+   their wrapped lines under the text (decision F42). */
+.body-line {
+  display: block;
+  min-height: 1lh;
+}
+
+.list-line {
+  padding-left: var(--hang);
+  text-indent: calc(-1 * var(--hang));
+}
+
 /* A shared contact (decision F41), as Signal's contact bubble. */
 .contact-card {
   display: flex;

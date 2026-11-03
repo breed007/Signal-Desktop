@@ -2264,6 +2264,10 @@ const STYLE_CLASS = {
 
 // Splits the body at every range edge and styles each piece, as Signal's
 // own renderer does.
+// A list line as Signal sends one: bullets, numbers, the plain dash.
+const LIST_PREFIX = /^[\u2003\t ]*(?:[•◦▪*-]|\d+[.)])(?: [☐☑])? (?=\S)/;
+const LIST_LINE = /(?:^|\n)[\u2003\t ]*(?:[•◦▪*-]|\d+[.)]) \S/;
+
 function renderBody(m) {
   const body = el('span', 'body');
   if (isJumboBody(m)) {
@@ -2277,10 +2281,44 @@ function renderBody(m) {
     edges.add(Math.max(0, Math.min(text.length, r.start)));
     edges.add(Math.max(0, Math.min(text.length, r.start + r.length)));
   }
+  // Lists get hanging indents (decision F42), so each line is its own
+  // block; pieces are cut at line ends for that.
+  const listed = LIST_LINE.test(text);
+  if (listed) {
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) {
+      edges.add(i);
+      edges.add(i + 1);
+    }
+  }
+  const lines = [];
+  const newLine = lineStart => {
+    const line = el('span', 'body-line');
+    const prefix = LIST_PREFIX.exec(text.slice(lineStart));
+    if (prefix) {
+      // Wrapped lines start under the text, not under the number or bullet.
+      // Widths in em of the page's font, near enough for the indent.
+      let width = 0;
+      for (const ch of prefix[0]) {
+        width +=
+          { '\u2003': 1, '\t': 2, ' ': 0.28, '.': 0.28, ')': 0.33 }[ch] ??
+          (/\d/.test(ch) ? 0.62 : 0.55);
+      }
+      line.classList.add('list-line');
+      line.style.setProperty('--hang', `${width.toFixed(2)}em`);
+    }
+    lines.push(line);
+    body.append(line);
+    return line;
+  };
+  let target = listed ? newLine(0) : body;
   const points = [...edges].sort((a, b) => a - b);
   for (let i = 0; i < points.length - 1; i += 1) {
     const start = points[i];
     const end = points[i + 1];
+    if (listed && text[start] === '\n' && end === start + 1) {
+      target = newLine(end);
+      continue;
+    }
     const styles = formatting
       .filter(r => r.start <= start && r.start + r.length >= end)
       .map(r => STYLE_CLASS[r.style])
@@ -2288,7 +2326,7 @@ function renderBody(m) {
     const mention = mentions.find(
       r => r.start <= start && r.start + r.length >= end
     );
-    let node = body;
+    let node = target;
     if (styles.length > 0) {
       node = el('span', styles.join(' '));
       if (styles.includes('f-spoiler')) {
@@ -2298,7 +2336,7 @@ function renderBody(m) {
           node.classList.add('revealed');
         });
       }
-      body.append(node);
+      target.append(node);
     }
     if (mention) {
       // One mention may span several pieces; write it once.
