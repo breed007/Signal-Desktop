@@ -25,7 +25,7 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
 | `contrib/backchannel/helper/` | The helper (Node, `backchannel.mjs`, `server.mjs`, `bridge.mjs`) and the page (`public/`). |
 | `contrib/backchannel/patches/0001-enable-bridge-from-env.patch` | How the container turns the bridge on (`SIGNAL_ENABLE_EXTERNAL_CLIENTS=1`, packaged or not). Unpackaged dev runs honor the variable without it. Patches 0002 to 0004 handle importing a local backup at link time. |
 | `contrib/backchannel/Dockerfile`, `entrypoint.sh` | How the container starts Signal and the helper today. Read them to see the helper's flags. |
-| `contrib/backchannel/mac/` | New: everything Mac-only (config, icon, scripts, BUILD-NOTES.md). |
+| `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, BUILD-NOTES.md. |
 | `.github/workflows/mac.yml` | New: build, sign, notarize, publish. |
 | `docs/external-client-*.md` | Architecture, threat model, decisions. Read before changing anything security-related. |
 
@@ -42,9 +42,9 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
    uses `--bind 0.0.0.0` because Docker forwards the port; the Mac must not).
 3. **Coexist with official Signal Desktop.** Different `productName`, app
    ID and data folder (not `~/Library/Application Support/Signal`).
-   Running both at once must not share a profile. Until M1 lands, never
-   launch a packaged build: it ignores config overrides and would open
-   official Signal Desktop's real profile.
+   Running both at once must not share a profile. Package only with
+   `contrib/backchannel/mac/build.sh`; Signal's own `build:release` makes
+   an app that opens official Signal Desktop's real profile.
 4. **Apple Silicon only.** `arm64`, macOS 14 or later (Signal Desktop
    itself supports macOS 13). No universal or Intel build.
 5. **No Signal update server.** Point the updater at this fork's GitHub
@@ -69,12 +69,15 @@ pnpm 11.24.0 first on `PATH`:
 pnpm install --frozen-lockfile
 pnpm run generate
 SIGNAL_ENABLE_EXTERNAL_CLIENTS=1 pnpm start          # dev run, bridge on
-SKIP_SIGNING_SCRIPT=1 CSC_IDENTITY_AUTO_DISCOVERY=false \
-  pnpm run build:release --mac dir --arm64          # unsigned arm64 .app
+contrib/backchannel/mac/build.sh                     # Backchannel.app, arm64
 ```
 
-`pnpm run build` is Signal's release build (x64 and arm64 zips, universal
-DMG, Signal's signing hook), so don't use it as-is. Electron fuses turn
+`build.sh` runs `generate` itself, uses
+`contrib/backchannel/mac/electron-builder.config.mjs` (Signal's `build`
+block with Backchannel's name, bundle ID, icon and arm64 target), and
+turns the updater off. Don't use `pnpm run build` or `build:release`:
+they make Signal's app (Signal's name, app ID, profile and signing hook).
+Electron fuses turn
 `RunAsNode` off and `OnlyLoadAppFromAsar` on, which shapes how M2 starts
 the helper. Add each new step or fix to BUILD-NOTES.md.
 
