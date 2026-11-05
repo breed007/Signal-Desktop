@@ -426,6 +426,13 @@ Rebuilding an old commit gives an app that expires just as soon.
   cask lint.
 - On `breed007/Signal-Desktop`'s Actions: the unsigned build and smoke test
   passed on `macos-26` in about 5 minutes.
+- Signed with the 404 Cybersecurity Developer ID but not notarized
+  (`CSC_NAME` set, no profile): the app has the hardened runtime and a
+  secure timestamp, `codesign --verify --deep --strict` passes, and the
+  smoke test passes. So the hardened runtime doesn't break the helper or
+  the app; only notarization is left to try.
+- `release.sh` stops before building when the profile is missing, with
+  the `store-credentials` command to run.
 
 ### Not done
 
