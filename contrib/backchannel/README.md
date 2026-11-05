@@ -217,7 +217,8 @@ image if the new one doesn't come up, and never prints the page's token.
 1. `sudo install -m 755 sync/sigdesktop-sync.sh /usr/local/bin/sigdesktop-sync`
 2. Copy `sync/sigdesktop-sync.env.example` to `/etc/sigdesktop-sync.env`
    and fill it in. `SYNC_NOTIFY` can name any command that takes the report
-   as its one argument.
+   as its one argument. It is only called for FAILED / NEEDS MIKE runs; clean
+   "OK:" runs go to the log only (set `SYNC_NOTIFY_ALWAYS=1` to get every run).
 3. Edit the user and paths in `sync/sigdesktop-sync.service`, copy it and
    `sync/sigdesktop-sync.timer` to `/etc/systemd/system/`, then
    `sudo systemctl enable --now sigdesktop-sync.timer`.
