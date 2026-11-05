@@ -128,7 +128,7 @@ SKIP_SIGNING_SCRIPT=1 CSC_IDENTITY_AUTO_DISCOVERY=false \
   `codesign --verify --deep --strict` fails ("code has no resources but
   signature indicates they must be present"). An ad-hoc re-sign fixes
   that: `codesign --force --deep --sign - release/mac-arm64/Signal.app`.
-  M3 replaces this with Developer ID signing.
+  (`build.sh` now has electron-builder sign instead; see M3.)
 
 ### Don't launch Signal's own packaged build
 
@@ -177,13 +177,13 @@ same time on one Mac, each with its own database
 
 ```sh
 contrib/backchannel/mac/build.sh          # release/mac-arm64/Backchannel.app
-contrib/backchannel/mac/build.sh dmg zip  # installers (DMG not checked yet; M3)
+contrib/backchannel/mac/build.sh dmg zip  # installers (see M3)
 ```
 
-The script runs `generate`, turns the updater off, runs electron-builder
-with `contrib/backchannel/mac/electron-builder.config.mjs`, and ad-hoc
-signs the app when no `SIGN_MACOS_SCRIPT` is set. About 45 s with a warm
-cache.
+The script runs `generate`, turns the updater off and runs electron-builder
+with `contrib/backchannel/mac/electron-builder.config.mjs`. (In M1 it
+ad-hoc signed the app itself afterward; M3 moved signing into
+electron-builder.) About 45 s with a warm cache.
 
 ### What makes it a separate app
 
@@ -211,10 +211,10 @@ Upstream files touched: **one**, `ts/components/About.dom.tsx`, marked
   Desktop", "Quit Signal", the "Signal" logo on the link screen and the
   About window. A strings overlay, like Android's `rebrand_strings.py`,
   is the likely fix.
-- The DMG background and volume icon are Signal's
-  (`build/dmg/background.tiff`, `build/dmg/icon.icns`). Replace them in M3.
+- The DMG background and volume icon were Signal's. Replaced in M3.
 - `scripts/notarize.mjs` reads the bundle ID from `package.json`, not the
-  config file. Check this in M3.
+  config file. M3 turns that hook off and uses electron-builder's own
+  notarization.
 - Both apps register `sgnl://` and `signalcaptcha://`, and Signal calls
   `setAsDefaultProtocolClient` at every start, so whichever app started
   last opens those links. Left as upstream on purpose (2026-11-02); revisit
@@ -356,3 +356,74 @@ The account test isn't done yet. With your phone at hand:
 - Window size and position aren't remembered between launches.
 - At each launch Signal's window shows briefly before the Backchannel
   window takes over.
+
+## M3: signed, notarized, published (2026-11-04)
+
+Result: **unsigned path works; signing not run yet.** No Apple Developer
+account is chosen, so nothing has been signed or notarized. The ad-hoc
+build, the DMG, the ZIP, the smoke test and the cask were checked locally;
+the workflow's own run is noted below. Release steps and secrets are in
+`RELEASING.md`.
+
+### What changed
+
+- `.github/workflows/mac.yml`: builds on `macos-26` from a
+  `backchannel-mac-v*` tag or by hand, smoke-tests the app, signs and
+  notarizes the app and the DMG when the five secrets are set, and on a
+  tag publishes a GitHub Release and pushes the cask to
+  `mikesimone/homebrew-backchannel`. Without secrets it keeps an ad-hoc
+  build as a workflow artifact and publishes nothing.
+- Signing moved from Signal's hooks to electron-builder's own, in
+  `electron-builder.config.mjs`:
+  - `mac.sign: null` drops Signal's hook, which hands the app to Signal's
+    signing script. electron-builder signs with `CSC_NAME`/`CSC_LINK` when
+    given and falls back to ad-hoc for arm64 otherwise. `build.sh` sets
+    `CSC_IDENTITY_AUTO_DISCOVERY=false` when neither is set, so a local
+    build never picks up a Developer ID that happens to be in the keychain.
+  - `afterSign: null` and `mac.notarize: true`: electron-builder notarizes
+    and staples the app when `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and
+    `APPLE_TEAM_ID` are set, and logs `skipped macOS notarization`
+    otherwise. Signal's hook would have used Signal's bundle ID.
+  - `afterAllArtifactBuild: null`: Signal's hook notarizes only a
+    universal DMG. The workflow signs, notarizes and staples the arm64 DMG
+    itself.
+  - `mac.hardenedRuntime` is on only with a Developer ID. **An ad-hoc
+    build with the hardened runtime aborts at launch**: library validation
+    rejects the ad-hoc `Electron Framework` ("mapping process and mapped
+    file (non-platform) have different Team IDs"). The smoke test caught
+    this.
+- Versions: `BACKCHANNEL_VERSION` (from the tag) goes in the file names
+  (`Backchannel-1.11-mac-arm64.dmg`) and `CFBundleVersion`.
+  `CFBundleShortVersionString` stays Signal Desktop's (8.36.0-alpha.1 at
+  the time), because Signal's servers and the expiry check read it.
+- DMG: `contrib/backchannel/mac/dmg/background.tiff` (Signal's layout,
+  Backchannel's teal, 1x and 2x) and `icon.icns` (rendered from the app
+  icon). The volume is named "Backchannel Installer".
+- `contrib/backchannel/mac/homebrew/backchannel.rb`: the cask template.
+  Rendered with a real SHA-256, it passes `brew style` and
+  `brew audit --cask --strict` in a scratch tap.
+
+### Expiry
+
+`scripts/get-expire-time.mjs` sets the expiry to 90 days after the
+**commit time** of `HEAD` (`git show -s --format=%ct`), not the build time.
+Rebuilding an old commit gives an app that expires just as soon. The
+workflow prints the date, and the release notes repeat it.
+
+### Smoke test
+
+The workflow starts `Backchannel.app/Contents/MacOS/Backchannel` with no
+linked account and expects the helper on `127.0.0.1:47830` to answer 404
+without the token, 200 with it, and 421 for another `Host`. Locally:
+`helper up: yes; no token: 404; with token: 200; other Host: 421`.
+
+### Not done
+
+- Signing and notarizing need the Apple Developer account (Mike's or 404
+  Cybersecurity's), its five secrets, and a first signed run.
+- The tap repository `mikesimone/homebrew-backchannel` doesn't exist yet.
+- The front-door README text waits for the first signed release
+  (`RELEASING.md` has it).
+- Tag scheme: `backchannel-mac-v*` keeps Mac releases apart from the
+  Docker image's `backchannel-v*` tags. Using one tag for both is a
+  one-line change to the trigger, if Mike wants it.

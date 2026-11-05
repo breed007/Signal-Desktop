@@ -5,11 +5,21 @@
 # Builds Backchannel for Mac (Apple Silicon) from this checkout.
 #
 #   contrib/backchannel/mac/build.sh          # release/mac-arm64/Backchannel.app
-#   contrib/backchannel/mac/build.sh dmg zip  # installers, as M3 will publish
+#   contrib/backchannel/mac/build.sh dmg zip  # the installers a release ships
 #
 # Run `pnpm install` first, with the Node and pnpm versions in BUILD-NOTES.md
-# first on PATH. Without SIGN_MACOS_SCRIPT the app is ad-hoc signed, which
-# runs on this Mac but not on others.
+# first on PATH.
+#
+# Environment:
+#   BACKCHANNEL_VERSION  release number for the build number and file names
+#                        (default 0)
+#   CSC_LINK, CSC_KEY_PASSWORD
+#                        a Developer ID Application certificate (.p12, a path
+#                        or base64) to sign with; CSC_NAME picks one already
+#                        in the keychain instead. With neither, the app is
+#                        ad-hoc signed: it runs on this Mac but not on others.
+#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#                        notarize the signed app (skipped without them)
 
 set -euo pipefail
 
@@ -39,8 +49,11 @@ node -e '
   fs.writeFileSync(file, JSON.stringify(config));
 '
 
-if [ -z "${SIGN_MACOS_SCRIPT:-}" ]; then
-  export SKIP_SIGNING_SCRIPT=1
+export BACKCHANNEL_VERSION="${BACKCHANNEL_VERSION:-0}"
+
+if [ -z "${CSC_LINK:-}" ] && [ -z "${CSC_NAME:-}" ]; then
+  # Don't pick up whatever Developer ID this Mac's keychain happens to hold;
+  # electron-builder signs arm64 ad-hoc instead.
   export CSC_IDENTITY_AUTO_DISCOVERY=false
 fi
 
@@ -48,9 +61,4 @@ NODE_OPTIONS='--import=tsx' pnpm exec electron-builder \
   --config contrib/backchannel/mac/electron-builder.config.mjs \
   --mac "${targets[@]}" --arm64
 
-app=release/mac-arm64/Backchannel.app
-if [ -z "${SIGN_MACOS_SCRIPT:-}" ] && [ -d "$app" ]; then
-  # Electron ships with only a linker signature, which doesn't seal the
-  # bundle; an ad-hoc signature makes `codesign --verify` pass.
-  codesign --force --deep --sign - "$app"
-fi
+codesign --verify --deep --strict release/mac-arm64/Backchannel.app

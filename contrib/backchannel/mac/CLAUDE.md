@@ -26,8 +26,8 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
 | `contrib/backchannel/patches/0001-enable-bridge-from-env.patch` | How the container turns the bridge on (`SIGNAL_ENABLE_EXTERNAL_CLIENTS=1`, packaged or not). Unpackaged dev runs honor the variable without it. Patches 0002 to 0004 handle importing a local backup at link time. |
 | `contrib/backchannel/Dockerfile`, `entrypoint.sh` | How the container starts Signal and the helper today. Read them to see the helper's flags. |
 | `ts/backchannel/` | The Backchannel app inside Signal: the build-time switch (`config.main.ts`) and the helper, window and Dock wiring (`app.main.ts`). |
-| `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, BUILD-NOTES.md. |
-| `.github/workflows/mac.yml` | New: build, sign, notarize, publish. |
+| `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, `dmg/` (installer art), `homebrew/backchannel.rb` (cask template), BUILD-NOTES.md, RELEASING.md. |
+| `.github/workflows/mac.yml` | Build, smoke-test, sign, notarize, publish (M3). Releases from `backchannel-mac-v*` tags; see RELEASING.md. |
 | `docs/external-client-*.md` | Architecture, threat model, decisions. Read before changing anything security-related. |
 
 ## Rules
@@ -75,8 +75,10 @@ contrib/backchannel/mac/build.sh                     # Backchannel.app, arm64
 
 `build.sh` runs `generate` itself, uses
 `contrib/backchannel/mac/electron-builder.config.mjs` (Signal's `build`
-block with Backchannel's name, bundle ID, icon and arm64 target), and
-turns the updater off. Don't use `pnpm run build` or `build:release`:
+block with Backchannel's name, bundle ID, icon, DMG and arm64 target, and
+electron-builder's own signing and notarizing in place of Signal's hooks),
+and turns the updater off. It signs ad-hoc unless `CSC_NAME` or `CSC_LINK`
+names a Developer ID; `BACKCHANNEL_VERSION` sets the release number. Don't use `pnpm run build` or `build:release`:
 they make Signal's app (Signal's name, app ID, profile and signing hook).
 Electron fuses turn
 `RunAsNode` off and `OnlyLoadAppFromAsar` on, which shapes how M2 starts
