@@ -4,9 +4,10 @@
 # Fork-only: builds Backchannel for Mac (contrib/backchannel/mac/).
 #
 # With the signing secrets set, the app and DMG are signed with a Developer
-# ID and notarized, and a tag publishes a GitHub Release. Without them the
-# app is ad-hoc signed and kept only as a workflow artifact, because
-# Gatekeeper blocks that build on any other Mac.
+# ID and notarized, and a tag in mikesimone/Signal-Desktop publishes a GitHub
+# Release. Without them the app is ad-hoc signed and kept only as a workflow
+# artifact, because Gatekeeper blocks that build on any other Mac. A fork
+# with the secrets gets signed builds as artifacts and never publishes.
 #
 # Release: push a tag backchannel-mac-v<version>, for example
 # backchannel-mac-v1.11. Builds expire 90 days after the commit they're built
@@ -16,9 +17,12 @@
 #   MAC_CERTIFICATE_P12          Developer ID Application certificate with its
 #                                private key, exported as .p12, base64
 #   MAC_CERTIFICATE_PASSWORD     the .p12 export password
-#   APPLE_ID                     the Apple ID that notarizes
-#   APPLE_APP_SPECIFIC_PASSWORD  an app-specific password for that Apple ID
-#   APPLE_TEAM_ID                the team that owns the certificate
+#   APPLE_API_KEY_P8             an App Store Connect team API key that
+#                                notarizes: the text of its AuthKey_*.p8
+#   APPLE_API_KEY_ID             that key's ID
+#   APPLE_API_ISSUER             the issuer ID shown above the team keys
+# A team key, not an Apple ID password: it reaches only App Store Connect,
+# and it can be revoked without touching anyone's Apple ID.
 # Optional:
 #   HOMEBREW_TAP_TOKEN           can push to mikesimone/homebrew-backchannel;
 #                                a release then updates the cask there
@@ -82,8 +86,8 @@ jobs:
         id: signing
         run: |
           count=0
-          for name in MAC_CERTIFICATE_P12 MAC_CERTIFICATE_PASSWORD APPLE_ID \
-            APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+          for name in MAC_CERTIFICATE_P12 MAC_CERTIFICATE_PASSWORD \
+            APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
             if [ -n "${!name}" ]; then count=$((count + 1)); fi
           done
           if [ "$count" = 5 ]; then
@@ -99,16 +103,16 @@ jobs:
         env:
           MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
           MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       - name: Setup environment
         uses: ./.github/actions/setup
         with:
           cache-electron-builder: true
 
-      - name: Import the signing certificate
+      - name: Import the signing certificate and API key
         if: ${{ steps.signing.outputs.signed == 'true' }}
         run: |
           keychain="$RUNNER_TEMP/backchannel-signing.keychain-db"
@@ -131,20 +135,25 @@ jobs:
           # electron-builder signs with this identity from this keychain.
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "CSC_NAME=$identity" >> "$GITHUB_ENV"
+          # electron-builder and notarytool both take the key as a file.
+          key="$RUNNER_TEMP/AuthKey.p8"
+          (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" > "$key")
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
         shell: bash
         env:
           MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
           MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
 
       - name: Build
         run: contrib/backchannel/mac/build.sh dmg zip
         shell: bash
         env:
           BACKCHANNEL_VERSION: ${{ steps.version.outputs.version }}
-          # Empty when unsigned; electron-builder then skips notarizing.
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Empty when unsigned (and APPLE_API_KEY unset); electron-builder
+          # then skips notarizing.
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       - name: Expiry
         id: expiry
@@ -192,14 +201,14 @@ jobs:
         run: |
           dmg="release/Backchannel-$VERSION-mac-arm64.dmg"
           codesign --sign "$CSC_NAME" --keychain "$CSC_KEYCHAIN" --timestamp "$dmg"
-          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --wait --output-format json > notarize.json
+          auth=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID"
+            --issuer "$APPLE_API_ISSUER")
+          xcrun notarytool submit "$dmg" "${auth[@]}" --wait \
+            --output-format json > notarize.json
           status="$(node -p 'require("./notarize.json").status')"
           if [ "$status" != Accepted ]; then
             id="$(node -p 'require("./notarize.json").id')"
-            xcrun notarytool log "$id" --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
+            xcrun notarytool log "$id" "${auth[@]}" || true
             echo "::error::Notarization of the DMG ended as $status"
             exit 1
           fi
@@ -210,9 +219,8 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       - name: Checksums and cask
         run: |
@@ -238,15 +246,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Remove the signing keychain
+      - name: Remove the signing keychain and API key
         if: ${{ always() && env.CSC_KEYCHAIN != '' }}
-        run: security delete-keychain "$CSC_KEYCHAIN" || true
+        run: |
+          security delete-keychain "$CSC_KEYCHAIN" || true
+          rm -f "$APPLE_API_KEY"
         shell: bash
 
   release:
     name: Publish
     needs: build
-    if: ${{ github.ref_type == 'tag' && needs.build.outputs.signed == 'true' }}
+    # Only Mike's repository publishes; a fork's signed builds stay artifacts.
+    if: >-
+      ${{ github.repository == 'mikesimone/Signal-Desktop' &&
+      github.ref_type == 'tag' && needs.build.outputs.signed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

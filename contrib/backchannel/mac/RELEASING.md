@@ -12,11 +12,18 @@ five, or none:
 
 | Secret | What |
 |---|---|
-| `MAC_CERTIFICATE_P12` | A Developer ID Application certificate with its private key, exported from Keychain Access as .p12, then `base64 -i cert.p12 \| pbcopy`. |
+| `MAC_CERTIFICATE_P12` | The Developer ID Application certificate with its private key, exported from Keychain Access as .p12, then `base64 -i cert.p12 \| pbcopy`. Backchannel uses 404 Cybersecurity LLC's (team `YA83Q8FTH3`). |
 | `MAC_CERTIFICATE_PASSWORD` | The password chosen at export. |
-| `APPLE_ID` | The Apple ID that notarizes, a member of the certificate's team. |
-| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for that Apple ID (account.apple.com > Sign-In and Security). |
-| `APPLE_TEAM_ID` | The 10-character team ID shown in the certificate's name. |
+| `APPLE_API_KEY_P8` | The text of an App Store Connect team API key (`AuthKey_XXXXXXXXXX.p8`) from App Store Connect > Users and Access > Integrations > Team Keys, role Developer. Apple offers the download once. |
+| `APPLE_API_KEY_ID` | That key's ID (the `XXXXXXXXXX`). |
+| `APPLE_API_ISSUER` | The issuer ID shown above the list of team keys. |
+
+The API key notarizes in place of an Apple ID and app-specific password:
+it reaches only App Store Connect, not anyone's iCloud, and revoking it
+touches nothing else.
+
+A fork with these secrets gets signed, notarized builds as workflow
+artifacts; only `mikesimone/Signal-Desktop` publishes releases.
 
 Without them the workflow still builds and smoke-tests an ad-hoc signed
 app, keeps it as a workflow artifact for 14 days, and publishes nothing.

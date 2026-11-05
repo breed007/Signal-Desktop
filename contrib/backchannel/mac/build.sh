@@ -18,8 +18,9 @@
 #                        or base64) to sign with; CSC_NAME picks one already
 #                        in the keychain instead. With neither, the app is
 #                        ad-hoc signed: it runs on this Mac but not on others.
-#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
-#                        notarize the signed app (skipped without them)
+#   APPLE_API_KEY (path to the .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER
+#                        an App Store Connect API key that notarizes the
+#                        signed app (skipped without them)
 
 set -euo pipefail
 

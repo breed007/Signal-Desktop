@@ -52,8 +52,8 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
    Releases, or turn it off and rely on Homebrew. Signal Desktop builds
    expire about 90 days after they're built, so every release must come
    from a recent merge.
-6. **No secrets in the repo.** Signing certificate, Apple ID, app-specific
-   password and team ID live only in Actions secrets.
+6. **No secrets in the repo.** The signing certificate and the App Store
+   Connect API key live only in Actions secrets.
 7. **Mike's calls stand.** He owns this fork. If something here conflicts
    with a decision in `docs/external-client-decisions.md` or Mike's README,
    stop and ask instead of choosing.

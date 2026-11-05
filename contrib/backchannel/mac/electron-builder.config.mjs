@@ -71,8 +71,8 @@ export default {
     // its library validation then refuses the ad-hoc Electron Framework and
     // the app aborts at launch.
     hardenedRuntime: developerId,
-    // Notarizes when APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID
-    // are set; skipped without them.
+    // Notarizes when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER
+    // (an App Store Connect API key) are set; skipped without them.
     notarize: true,
     // Never publish to or advertise Signal's update server (rule 5).
     publish: null,

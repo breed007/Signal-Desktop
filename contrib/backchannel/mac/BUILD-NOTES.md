@@ -381,9 +381,11 @@ the workflow's own run is noted below. Release steps and secrets are in
     `CSC_IDENTITY_AUTO_DISCOVERY=false` when neither is set, so a local
     build never picks up a Developer ID that happens to be in the keychain.
   - `afterSign: null` and `mac.notarize: true`: electron-builder notarizes
-    and staples the app when `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and
-    `APPLE_TEAM_ID` are set, and logs `skipped macOS notarization`
-    otherwise. Signal's hook would have used Signal's bundle ID.
+    and staples the app when an App Store Connect API key is given
+    (`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`), and logs
+    `skipped macOS notarization` otherwise. A team API key rather than an
+    Apple ID and app-specific password, because the secrets live in Mike's
+    repository and an app-specific password opens the whole Apple ID. Signal's hook would have used Signal's bundle ID.
   - `afterAllArtifactBuild: null`: Signal's hook notarizes only a
     universal DMG. The workflow signs, notarizes and staples the arm64 DMG
     itself.
@@ -419,8 +421,9 @@ without the token, 200 with it, and 421 for another `Host`. Locally:
 
 ### Not done
 
-- Signing and notarizing need the Apple Developer account (Mike's or 404
-  Cybersecurity's), its five secrets, and a first signed run.
+- Signing uses 404 Cybersecurity LLC's Developer ID (team `YA83Q8FTH3`,
+  chosen 2026-11-04). It needs its five secrets in Mike's repository and a
+  first signed run there.
 - The tap repository `mikesimone/homebrew-backchannel` doesn't exist yet.
 - The front-door README text waits for the first signed release
   (`RELEASING.md` has it).
