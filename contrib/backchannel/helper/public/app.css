@@ -2123,6 +2123,15 @@ button {
   text-indent: calc(-1 * var(--hang));
 }
 
+/* A starred message (decision F43). */
+.meta .star-mark {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  fill: currentColor;
+}
+
 /* A shared contact (decision F41), as Signal's contact bubble. */
 .contact-card {
   display: flex;
@@ -3936,4 +3945,32 @@ label.poll-option {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
+}
+
+/* What's New (decision F45) */
+.whats-new-list {
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+.whats-new-day {
+  margin: 14px 0 4px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.whats-new-day .new-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8em;
+}
+.whats-new-list ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.whats-new-list li {
+  margin: 3px 0;
+  line-height: 1.35;
 }

@@ -50,6 +50,13 @@
             <button
               type="button"
               class="icon-button"
+              id="starred-open"
+              title="Starred messages"
+              aria-label="Starred messages"
+            ></button>
+            <button
+              type="button"
+              class="icon-button"
               id="settings-open"
               title="Settings"
               aria-label="Settings"
@@ -319,6 +326,36 @@
           spellcheck="false"
         />
         <ul class="forward-list" id="block-chooser-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="starred" hidden>
+      <div class="modal" role="dialog" aria-labelledby="starred-title">
+        <div class="modal-head">
+          <span id="starred-title">Starred messages</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="starred-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <ul class="forward-list starred-list" id="starred-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="whats-new" hidden>
+      <div class="modal" role="dialog" aria-labelledby="whats-new-title">
+        <div class="modal-head">
+          <span id="whats-new-title">What's new in Backchannel</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="whats-new-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="whats-new-list" id="whats-new-list"></div>
       </div>
     </div>
     <div class="modal-backdrop" id="contact-chooser" hidden>

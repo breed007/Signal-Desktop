@@ -19,6 +19,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 
+import { MAX_CUSTOM_PHOTO_BYTES } from './customPhotos.mjs';
+
 const MAX_BODY_BYTES = 128 * 1024;
 // Signal's limit for a new profile photo (profile.setAvatar).
 const MAX_PROFILE_PHOTO_BYTES = 600 * 1024;
@@ -141,6 +143,7 @@ export function checkRequest(req, { origins, token }) {
       path.endsWith('/api/upload') ||
       path.endsWith('/api/scheduleFile') ||
       path.endsWith('/api/profilePhoto') ||
+      path.endsWith('/api/customPhoto') ||
       path.endsWith('/api/groups') ||
       path.endsWith('/api/groupInfo');
     if (type !== (upload ? 'application/octet-stream' : 'application/json')) {
@@ -211,6 +214,8 @@ export function createWebServer({
   store,
   bridge,
   privateReplies = null,
+  stars = null,
+  customPhotos = null,
   scheduled = null,
   contactPhotos = null,
   log,
@@ -531,7 +536,11 @@ export function createWebServer({
     if (req.method === 'GET' && route === 'api/avatar') {
       const conversationId = url.searchParams.get('conversationId');
       const version = url.searchParams.get('v') ?? '';
-      const avatar = await loadAvatar(conversationId, version);
+      // Your own photo for them beats Signal's (decision F44).
+      const custom = customPhotos?.get(conversationId);
+      const avatar = custom
+        ? { ...custom, avatarVersion: `custom-${custom.version}` }
+        : await loadAvatar(conversationId, version);
       if (!avatar) {
         sendJson(res, 404, { error: { code: 'NOT_FOUND' } });
         return;
@@ -862,6 +871,34 @@ export function createWebServer({
       );
       return;
     }
+    if (req.method === 'GET' && route === 'api/customPhotos') {
+      sendJson(res, 200, { versions: customPhotos?.versions() ?? {} });
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/customPhoto') {
+      // An empty body removes the photo.
+      const conversationId = url.searchParams.get('conversationId') ?? '';
+      const bytes = await readBytes(req, MAX_CUSTOM_PHOTO_BYTES);
+      if (!bytes) {
+        sendJson(res, 413, { error: { code: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      if (!customPhotos || conversationId === '') {
+        sendJson(res, 400, { error: { code: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      const ok =
+        bytes.length === 0
+          ? customPhotos.remove(conversationId) || true
+          : customPhotos.set(conversationId, 'image/jpeg', bytes);
+      if (!ok) {
+        sendJson(res, 400, { error: { code: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      broadcast('customPhotos.changed', { versions: customPhotos.versions() });
+      sendJson(res, 200, { versions: customPhotos.versions() });
+      return;
+    }
     if (req.method === 'POST' && route === 'api/profilePhoto') {
       // An empty body removes the photo.
       const bytes = await readBytes(req, MAX_PROFILE_PHOTO_BYTES);
@@ -974,6 +1011,42 @@ export function createWebServer({
     }
     if (scheduled && route.startsWith('api/schedule')) {
       await handleScheduled(req, res, route, url);
+      return;
+    }
+    // Starred messages (decision F43), kept by the helper.
+    if (req.method === 'GET' && route === 'api/starIds') {
+      sendJson(res, 200, { ids: stars?.ids() ?? [] });
+      return;
+    }
+    if (req.method === 'GET' && route === 'api/stars') {
+      const conversationId = url.searchParams.get('conversationId') ?? '';
+      const items = [];
+      // Newest first; a message deleted since drops out of the list.
+      for (const item of (stars?.list(conversationId) ?? []).slice(0, 200)) {
+        try {
+          const { message } = await bridge.call('messages.get', {
+            messageId: item.messageId,
+          });
+          if (message) {
+            items.push({ ...item, message });
+          }
+        } catch {
+          // Gone or unreadable: leave it out.
+        }
+      }
+      sendJson(res, 200, { items });
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/star') {
+      const { messageId, conversationId, starred } = await readJson(req);
+      sendJson(res, 200, {
+        ok:
+          stars?.set({
+            messageId: String(messageId ?? ''),
+            conversationId: String(conversationId ?? ''),
+            starred: starred === true,
+          }) ?? false,
+      });
       return;
     }
     if (req.method === 'GET' && route === 'api/privateReplies') {

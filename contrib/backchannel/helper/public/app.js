@@ -164,6 +164,7 @@ const ICONS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM16 16l4.5 4.5',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
   poll: 'M5 20V11M12 20V4M19 20v-6',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
   contact: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
@@ -239,6 +240,34 @@ function colorFor(id, avatarColor) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+// conversationId -> version of the photo you set for them (decision F44).
+let customPhotoVersions = {};
+
+async function loadCustomPhotos() {
+  try {
+    const { versions } = await api('api/customPhotos');
+    setCustomPhotos(versions);
+  } catch {
+    // Signal's photos still show.
+  }
+}
+
+function setCustomPhotos(versions) {
+  const before = JSON.stringify(customPhotoVersions);
+  customPhotoVersions = versions && typeof versions === 'object' ? versions : {};
+  if (JSON.stringify(customPhotoVersions) === before) {
+    return;
+  }
+  messageCache.clear();
+  renderConversations();
+  renderTitle();
+  if (selectedId) {
+    renderChatHeader();
+    renderMessages();
+    refreshDetailsSoon(selectedId);
+  }
+}
+
 // who: { title, avatarColor, avatarVersion }; kind: 'direct' | 'group' | 'me'
 function avatar(id, who, size, kind = 'direct') {
   const box = el(
@@ -256,7 +285,10 @@ function avatar(id, who, size, kind = 'direct') {
     }
   };
   fallback();
-  if (who.avatarVersion) {
+  // Your own photo for them beats Signal's (decision F44).
+  const custom = customPhotoVersions[id];
+  const version = custom ? `custom-${custom}` : who.avatarVersion;
+  if (version) {
     // In the DOM from the start so lazy loading can see it; shown over the
     // initials once loaded.
     const img = el('img', 'photo');
@@ -268,7 +300,7 @@ function avatar(id, who, size, kind = 'direct') {
     box.append(img);
     const params = new URLSearchParams({
       conversationId: id,
-      v: who.avatarVersion,
+      v: version,
     });
     img.src = `api/avatar?${params}`;
   }
@@ -2441,6 +2473,27 @@ function renderMessage(m, prev, next) {
     m.attachments.length === 0 &&
     isJumbo(m.body);
   const bubble = el('span', `bubble${jumbo ? ' jumbo' : ''}`);
+  // As Backchannel Android: double-click reacts with your first reaction,
+  // and again takes it back.
+  if (canReact() && canReplyTo(m)) {
+    bubble.addEventListener('mousedown', e => {
+      if (e.detail > 1 && !e.target.closest('a, button, video, audio, input')) {
+        e.preventDefault();
+      }
+    });
+    bubble.addEventListener('dblclick', async e => {
+      if (e.target.closest('a, button, video, audio, input, .media')) {
+        return;
+      }
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      const [first] = await getPreferredReactions();
+      if (first) {
+        const mine = m.reactions.find(r => r.fromMe)?.emoji;
+        sendReaction(m, first, mine === first);
+      }
+    });
+  }
 
   if (!outgoing && isGroupChat && firstOfRun) {
     const name = nameLine(nameOf(m.authorConversationId), m.author, 'author');
@@ -2482,6 +2535,11 @@ function renderMessage(m, prev, next) {
   }
 
   const meta = el('span', 'meta');
+  if (starredIds.has(m.id)) {
+    const star = icon('star');
+    star.classList.add('star-mark');
+    meta.append(star);
+  }
   meta.append(formatTime(m.sentAt));
   if (m.edited) {
     // As in Signal, "Edited" opens the earlier versions (decision F39).
@@ -2535,6 +2593,7 @@ function cachedMessage(m, prev, next) {
     next?.sentAt,
     capabilities,
     formatTime(m.sentAt),
+    starredIds.has(m.id),
   ]);
   const cached = messageCache.get(m.id);
   if (cached && cached.key === key) {
@@ -2892,6 +2951,7 @@ function openChatMenu(conversationId, anchor, page = null) {
       );
       add('search', 'Search in chat', () => startChatSearch(c.id));
       add('media', 'All media', () => openGallery(c.id));
+      add('star', 'Starred messages', () => openStarred(c.id));
       items.push(el('div', 'menu-separator'));
     }
     if (!blocked && !c.messageRequestPending) {
@@ -3342,6 +3402,25 @@ function photoRows(c, d) {
     );
     select.setAttribute('aria-label', 'Which photo to show');
     actions.append(select);
+  }
+  if (c.type !== 'group' && !c.noteToSelf) {
+    const pick = el(
+      'button',
+      'setting-button',
+      customPhotoVersions[c.id] ? 'Change your photo for them' : 'Set your own photo'
+    );
+    pick.type = 'button';
+    pick.title = 'Only you see it. It beats their profile photo and your phone\'s.';
+    pick.addEventListener('click', () => pickCustomPhoto(c.id, pick));
+    actions.append(pick);
+    if (customPhotoVersions[c.id]) {
+      const clear = el('button', 'setting-button', 'Remove your photo');
+      clear.type = 'button';
+      clear.addEventListener('click', () =>
+        changeCustomPhoto(c.id, null, clear)
+      );
+      actions.append(clear);
+    }
   }
   if (canManageSettings()) {
     const sync = el('button', 'setting-button', 'Import photos from phone');
@@ -4427,10 +4506,10 @@ async function saveProfile() {
 }
 
 // As Signal's avatar editor: a centered square, at most 512 pixels.
-async function squarePhoto(file) {
+async function squarePhoto(file, max = 512) {
   const bitmap = await createImageBitmap(file);
   const side = Math.min(bitmap.width, bitmap.height);
-  const out = Math.min(side, 512);
+  const out = Math.min(side, max);
   const canvas = document.createElement('canvas');
   canvas.width = out;
   canvas.height = out;
@@ -4455,6 +4534,51 @@ async function squarePhoto(file) {
       0.9
     )
   );
+}
+
+function pickCustomPhoto(conversationId, button) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    let photo;
+    try {
+      photo = await squarePhoto(file, 640);
+    } catch {
+      toast("That file isn't a picture.");
+      return;
+    }
+    await changeCustomPhoto(conversationId, photo, button);
+  });
+  input.click();
+}
+
+// Your own photo for someone (decision F44). photo: a Blob, or null to remove.
+async function changeCustomPhoto(conversationId, photo, button) {
+  button.disabled = true;
+  try {
+    const res = await fetch(
+      `api/customPhoto?${new URLSearchParams({ conversationId })}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: photo ?? new Blob([]),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error?.code ?? res.status);
+    }
+    setCustomPhotos(data.versions);
+  } catch (error) {
+    toast(`Photo not changed (${error.message}).`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // photo: a Blob, or null to remove it.
@@ -4770,6 +4894,240 @@ function renderBlockChooser() {
   );
 }
 
+// --- starred messages (decision F43) -----------------------------------------
+
+// Kept by the helper: Signal Desktop has no star and stars never sync.
+let starredIds = new Set();
+
+async function loadStarredIds() {
+  try {
+    starredIds = new Set((await api('api/starIds')).ids);
+  } catch {
+    // Without the list, nothing shows as starred.
+  }
+}
+
+async function setStar(m, starred) {
+  try {
+    await api('api/star', {
+      messageId: m.id,
+      conversationId: m.conversationId,
+      starred,
+    });
+  } catch (error) {
+    toast(`Couldn't star (${error.code ?? error.message}).`);
+    return;
+  }
+  if (starred) {
+    starredIds.add(m.id);
+  } else {
+    starredIds.delete(m.id);
+  }
+  if (m.conversationId === selectedId && messages.has(m.id)) {
+    renderMessages();
+  }
+}
+
+// One chat's starred messages, or every chat's, newest star first.
+async function openStarred(conversationId = null) {
+  closePopovers();
+  const list = $('starred-list');
+  list.replaceChildren(el('li', 'sub', 'Loading…'));
+  $('starred-title').textContent = conversationId
+    ? `Starred in ${displayTitle(conversations.get(conversationId) ?? { title: 'this chat' })}`
+    : 'Starred messages';
+  $('starred').hidden = false;
+  let items = [];
+  try {
+    const query = conversationId
+      ? `?${new URLSearchParams({ conversationId })}`
+      : '';
+    ({ items } = await api(`api/stars${query}`));
+  } catch (error) {
+    list.replaceChildren(
+      el('li', 'sub', `Couldn't load (${error.code ?? error.message}).`)
+    );
+    return;
+  }
+  list.replaceChildren(
+    ...(items.length === 0
+      ? [el('li', 'sub', 'No starred messages. Star one from its ⋯ menu.')]
+      : items.map(({ message }) => starredRow(message)))
+  );
+}
+
+function starredRow(m) {
+  const c = conversations.get(m.conversationId);
+  const li = el('li', 'search-result');
+  const from =
+    m.direction === 'outgoing'
+      ? 'You'
+      : (m.author?.title ?? nameOf(m.authorConversationId));
+  const where = c ? displayTitle(c) : 'Unknown chat';
+  const title = c?.type === 'group' ? `${from} in ${where}` : `${from} · ${where}`;
+  const text = el('span', 'row-text');
+  const top = el('span', 'row-top');
+  top.append(
+    el('span', 'title', title),
+    el('span', 'time', shortTime(m.sentAt))
+  );
+  text.append(top, el('span', 'preview', summarize(m)));
+  li.append(c ? conversationAvatar(c, 40) : el('span', 'avatar'), text);
+  li.addEventListener('click', () => {
+    closeStarred();
+    jumpToMessage(m);
+  });
+  return li;
+}
+
+function closeStarred() {
+  $('starred').hidden = true;
+}
+
+$('starred-open').append(icon('star'));
+$('starred-open').addEventListener('click', () => openStarred());
+$('starred-close').append(icon('close'));
+$('starred-close').addEventListener('click', closeStarred);
+$('starred').addEventListener('click', e => {
+  if (e.target === $('starred')) {
+    closeStarred();
+  }
+});
+loadStarredIds();
+loadCustomPhotos();
+
+// --- What's New (decision F45) ---------------------------------------------
+
+// Newest first. As Backchannel Android for now: every entry since the
+// beginning shows, and the ones since your last look are marked New.
+const WHATS_NEW = [
+  [
+    '2026-11-05',
+    [
+      'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',
+      'Your own photo for anyone: pick one in a chat\'s details. Only you see it, and it beats their profile photo.',
+      'Starred messages: star any message from its ⋯ menu, then find them all from the ★ above the chat list.',
+      'Typing :) or <3 makes the emoji. Backspace right after takes it back.',
+      'Double-click a message to react with your first reaction.',
+    ],
+  ],
+  [
+    '2026-11-03',
+    [
+      'Full markdown when you type or paste: * bullets, numbered lists, # headings, > quotes and code.',
+      'Shift+Enter continues a list. List lines keep their indent in bubbles.',
+    ],
+  ],
+  [
+    '2026-11-02',
+    [
+      'Messages go out even when someone\'s safety number changed.',
+      'Contact cards: see them and send your contacts.',
+    ],
+  ],
+  [
+    '2026-10-30',
+    ['GIFs play in the chat.', 'Forwarding works again after Signal 8.36.'],
+  ],
+  [
+    '2026-10-26',
+    ['Block and unblock people from Settings.', 'See an edited message\'s history.'],
+  ],
+  [
+    '2026-10-19',
+    [
+      'Chat folders, and an unread filter in search.',
+      '"Safety number changed" notices.',
+      'Contact photos from your phone, kept fresh.',
+    ],
+  ],
+  [
+    '2026-10-14',
+    [
+      'All media for a chat.',
+      'Edit and @mention when forwarding, to any number of chats.',
+      'Markdown shortcuts, and styled copy and paste.',
+    ],
+  ],
+  [
+    '2026-10-13',
+    [
+      'Typing indicators, the unread line, and search.',
+      'Signal\'s chat menu, chat details and group management.',
+      'Voice notes, new chats and new groups.',
+      'Reply privately to someone in a group.',
+      'Link previews, sticker replies and scheduled messages.',
+      'Step through a message\'s photos.',
+    ],
+  ],
+  [
+    '2026-10-12',
+    [
+      'Text formatting, stickers and delivery ticks.',
+      'Settings, your profile, the blocked list and emoji skin tone.',
+    ],
+  ],
+  [
+    '2026-10-10',
+    [
+      'Photos, reactions, replies, edits and deletes.',
+      'Send files, forward without limits, polls, @mentions and the full emoji picker.',
+    ],
+  ],
+];
+const WHATS_NEW_KEY = 'whatsNewSeen';
+
+function whatsNewSeen() {
+  try {
+    return localStorage.getItem(WHATS_NEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function openWhatsNew() {
+  closePopovers();
+  const seen = whatsNewSeen() ?? '';
+  const day = new Intl.DateTimeFormat(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  $('whats-new-list').replaceChildren(
+    ...WHATS_NEW.flatMap(([date, items]) => {
+      const head = el('div', 'whats-new-day', day.format(new Date(date)));
+      if (seen && date > seen) {
+        head.append(el('span', 'new-badge', 'New'));
+      }
+      const list = el('ul');
+      list.append(...items.map(text => el('li', null, text)));
+      return [head, list];
+    })
+  );
+  $('whats-new').hidden = false;
+  try {
+    localStorage.setItem(WHATS_NEW_KEY, WHATS_NEW[0][0]);
+  } catch {
+    // It shows again next time.
+  }
+}
+
+function closeWhatsNew() {
+  $('whats-new').hidden = true;
+}
+
+$('whats-new-close').append(icon('close'));
+$('whats-new-close').addEventListener('click', closeWhatsNew);
+$('whats-new').addEventListener('click', e => {
+  if (e.target === $('whats-new')) {
+    closeWhatsNew();
+  }
+});
+if (whatsNewSeen() !== WHATS_NEW[0][0]) {
+  openWhatsNew();
+}
+
 // --- contact cards (decision F41) -------------------------------------------
 
 // A shared contact, as Signal's bubble shows it, with the numbers, emails
@@ -5064,6 +5422,16 @@ function settingsSections() {
           ],
           setPageTheme
         )
+      ),
+      settingRow(
+        "What's new",
+        'Everything added to Backchannel, newest first.',
+        (() => {
+          const open = el('button', 'setting-button', 'Show');
+          open.type = 'button';
+          open.addEventListener('click', openWhatsNew);
+          return open;
+        })()
       ),
     ],
   });
@@ -5648,6 +6016,10 @@ function openMoreMenu(m, anchor) {
   if (m.canEdit) {
     add('edit', 'Edit', () => startEdit(m));
   }
+  if (canReplyTo(m)) {
+    const starred = starredIds.has(m.id);
+    add('star', starred ? 'Unstar' : 'Star', () => setStar(m, !starred));
+  }
   add('trash', 'Delete for me', () => deleteMessage(m, false));
   if (m.canDeleteForEveryone) {
     add('trash', 'Delete for everyone', () => deleteMessage(m, true));
@@ -5785,8 +6157,8 @@ function notify(m) {
       body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
       tag: m.conversationId,
       icon:
-        content !== 'count' && c.avatarVersion
-          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: c.avatarVersion })}`
+        content !== 'count' && (customPhotoVersions[c.id] || c.avatarVersion)
+          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: customPhotoVersions[c.id] ? `custom-${customPhotoVersions[c.id]}` : c.avatarVersion })}`
           : 'icon.svg',
     });
     n.addEventListener('click', () => {
@@ -5874,6 +6246,7 @@ function connectEvents() {
     }
     renderBanner();
   });
+  on('customPhotos.changed', ({ versions }) => setCustomPhotos(versions));
   on('conversation.updated', c => {
     conversations.set(c.id, c);
     renderConversations();
@@ -7872,6 +8245,13 @@ function applyBulletShortcut() {
 // A new line in a list starts the next item (the same bullet, or the next
 // number); on an empty item it ends the list instead.
 function insertNewline() {
+  const before = selectionOffsets();
+  if (before && before.start === before.end) {
+    const shrink = replaceEmoticon(before.start, EMOTICONS_AT_SPACE, false);
+    if (shrink !== null) {
+      selectOffsets(before.start - shrink);
+    }
+  }
   const at = selectionOffsets() ?? composeSelection;
   const chars = readCompose();
   const caret = at?.start ?? chars.length;
@@ -7895,6 +8275,94 @@ function insertNewline() {
     : `${m[1]}${Number(m[3]) + 1}${m[4]} `;
   spliceCompose(caret, caret, charsOf(`\n${next}`));
   onComposeInput();
+}
+
+// Typed emoticons as emoji, Backchannel Android's list (decision F43).
+// These change the moment the last character goes in; the second list
+// waits for a space or new line, so ":Pizza" stays as typed. Either counts
+// only on its own: after a space, a new line or the start of the text.
+const EMOTICONS_NOW = {
+  ':)': '🙂',
+  ':-)': '🙂',
+  '=)': '🙂',
+  ':(': '🙁',
+  ':-(': '🙁',
+  ';)': '😉',
+  ';-)': '😉',
+  ":'(": '😢',
+  ':|': '😐',
+  ':-|': '😐',
+  '>:(': '😠',
+  'O:)': '😇',
+  ':-/': '😕',
+  ':-*': '😘',
+};
+const EMOTICONS_AT_SPACE = {
+  ':D': '😃',
+  ':-D': '😃',
+  ':P': '😛',
+  ':p': '😛',
+  ';P': '😜',
+  ':O': '😮',
+  ':o': '😮',
+  XD: '😆',
+  xD: '😆',
+  '<3': '❤️',
+  '</3': '💔',
+  ':*': '😘',
+};
+
+// The emoticon from `table` that ends at `end`, standing on its own,
+// replaced in the box. Returns how many characters it shortened the text
+// by, or null when there was none.
+function replaceEmoticon(end, table, undo) {
+  const chars = readCompose();
+  for (const [text, emoji] of Object.entries(table)) {
+    const start = end - text.length;
+    if (start < 0) {
+      continue;
+    }
+    const piece = chars.slice(start, end);
+    if (piece.some(c => c.mention) || lineText(piece) !== text) {
+      continue;
+    }
+    const before = chars[start - 1];
+    if (before && before.ch !== ' ' && before.ch !== '\n') {
+      continue;
+    }
+    const original = [...chars];
+    const replaced = charsOf(emoji);
+    chars.splice(start, text.length, ...replaced);
+    drawCompose(chars);
+    if (undo) {
+      // Backspace right after puts the characters back.
+      markdownUndo = {
+        chars: original,
+        caret: start + replaced.length,
+        restore: end,
+      };
+    }
+    return text.length - replaced.length;
+  }
+  return null;
+}
+
+// After a character is typed: an instant emoticon ending at the caret, or
+// a waiting one ending just before a typed space.
+function applyEmoticon(typed) {
+  const at = selectionOffsets();
+  if (!at || at.start !== at.end) {
+    return false;
+  }
+  const spaced = typed === ' ';
+  const shrink = spaced
+    ? replaceEmoticon(at.start - 1, EMOTICONS_AT_SPACE, false)
+    : replaceEmoticon(at.start, EMOTICONS_NOW, true);
+  if (shrink === null) {
+    return false;
+  }
+  selectOffsets(at.start - shrink);
+  return true;
 }
 
 function undoMarkdown() {
@@ -8137,8 +8605,10 @@ function wireComposeBox(box, onInput) {
     }
     markdownUndo = null;
     markdownCaret = null;
-    if (e.inputType === 'insertText' && e.data === ' ' && !e.isComposing) {
-      applyBulletShortcut();
+    if (e.inputType === 'insertText' && e.data && !e.isComposing) {
+      if (!applyEmoticon(e.data) && e.data === ' ') {
+        applyBulletShortcut();
+      }
     }
   });
   box.addEventListener('input', onInput);
@@ -9378,6 +9848,10 @@ document.addEventListener('keydown', e => {
       closeScheduledList();
     } else if (!$('contact-chooser').hidden) {
       closeContactChooser();
+    } else if (!$('whats-new').hidden) {
+      closeWhatsNew();
+    } else if (!$('starred').hidden) {
+      closeStarred();
     } else if (!$('block-chooser').hidden) {
       closeBlockChooser();
     } else if (!$('forward').hidden) {

@@ -1056,3 +1056,46 @@ marker. That is display only; other Signal apps wrap it their own way.
 
 WHY: Mike (2026-11-03): "full-on markdown capability", "* be a bullet, not
 -", and pasted text from LLMs should convert itself.
+
+## F43. Fork only: Backchannel Android's emoticons, double-click react, stars
+
+DECISION: three Backchannel Android features on the page, with Android's
+rules. Typed emoticons become emoji: :) :-) =) :( :-( ;) ;-) :'( :| :-| >:(
+O:) :-/ :-* at once (Backspace right after undoes), and :D :-D :P :p ;P :O
+:o XD xD <3 </3 :* when a space or new line follows; only on their own,
+after a space, a new line or the start. Double-clicking a message reacts
+with your first reaction and again takes it back. Messages can be starred
+from the ⋯ menu; the star list is in the chat list header (all chats) and
+the chat menu (this chat). Stars are kept by the helper in stars.json,
+since Signal Desktop has no star and Signal never syncs them.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."
+
+## F44. Fork only: your own photo for anyone
+
+DECISION: as Backchannel Android's "Contact photo", a 1:1 chat's details
+offer "Set your own photo" (and "Remove your photo"). The picture is
+cropped square to at most 640 pixels and kept by the helper in
+custom-photos/ in its config folder (one file per chat, named by a hash of
+the chat id). It beats both their Signal profile photo and your phone's
+contact photo everywhere the page shows them, notifications included, on
+every open page. Only you see it; nothing goes to Signal, which has no such
+field.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."
+
+## F45. Fork only: What's New after an update
+
+DECISION: as Backchannel Android, the page opens a "What's new" list when
+it has entries you haven't seen (and on a first visit). For now every entry
+since the beginning shows, newest first, and days since your last look are
+marked New. The last-seen day is kept in the browser (localStorage), so each
+browser shows it once. Settings, Appearance, "What's new" reopens it. The
+list lives in app.js (WHATS_NEW); add a day at the top with each change
+people will notice.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should." Android shows all of its what's-new for the next few
+releases (Mike, 2026-11-03).
