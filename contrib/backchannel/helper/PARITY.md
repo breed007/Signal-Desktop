@@ -112,3 +112,27 @@ Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 | Keyboard shortcuts (Signal's list)                     | partial | formatting, Escape, Enter |
 | Reconnects by itself                                   | done    |                           |
 | Release notes / what's new                             | missing |                           |
+
+## Backchannel Android
+
+Mike (2026-11-04): where the page can match Backchannel for Android, it
+should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
+
+| Android feature                                   | Status    | Notes                                                  |
+| ------------------------------------------------- | --------- | ------------------------------------------------------ |
+| Sticker replies, bold italic, forward a poll      | done      | F28, F8, F6                                            |
+| Reply privately, viewer stays in one message      | done      | F23, F30                                               |
+| @mentions in forwards, forward to any number      | done      | F32, F4                                                |
+| Markdown shortcuts, styled copy and paste         | done      | F33                                                    |
+| Full markdown, list helpers, pasted markdown      | done      | F42                                                    |
+| Hanging indent in bubbles                         | done      | F42                                                    |
+| Typed emoticons become emoji                      | done      | F43: Android's list and timing                         |
+| Double-tap (here double-click) to react           | done      | F43                                                    |
+| Starred messages                                  | done      | F43: kept by the helper                                |
+| One skin tone for every emoji                     | done      | F11                                                    |
+| Your own photo for anyone                         | missing   |                                                        |
+| What's New after an update                        | missing   |                                                        |
+| Immich picker                                     | missing   | Android bc9 not released yet                           |
+| Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
+| Link someone to a phone contact                   | different | Desktop has no phone contacts; F36/F37 use the synced ones |
+| Notifications, screenshots, passphrase, push, icon, Photo apps, Open links | different | phone-only |

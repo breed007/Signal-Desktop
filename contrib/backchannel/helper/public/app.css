@@ -2123,6 +2123,15 @@ button {
   text-indent: calc(-1 * var(--hang));
 }
 
+/* A starred message (decision F43). */
+.meta .star-mark {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  fill: currentColor;
+}
+
 /* A shared contact (decision F41), as Signal's contact bubble. */
 .contact-card {
   display: flex;

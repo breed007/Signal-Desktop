@@ -38,6 +38,10 @@ Backchannel does. Each new one is added here when it ships.
   Backchannel lists every chat, most recent first, with no limit.
 - **One poll to many chats.** Signal can't forward a poll; Backchannel
   sends each chat its own copy.
+- **Starred messages.** Star any message from its menu and find it again
+  in one list, for all chats or one. Kept on your server.
+- **Emoticons and double-click.** Typing :) or <3 makes the emoji, and
+  double-clicking a message reacts with your first reaction.
 - **Reply privately** to someone in a group: their message is quoted in
   your 1:1 chat, and the two are linked both ways on the page. Signal
   Desktop has no such option.

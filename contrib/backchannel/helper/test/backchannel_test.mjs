@@ -1343,6 +1343,33 @@ describe('backchannel helper', () => {
     assert.equal(reply.params.quoteMessageId, 'm1');
   });
 
+  it('keeps starred messages in the helper', async () => {
+    const kept = makeMessage(alice.id, { body: 'keep this' });
+    bridge.messages.set(alice.id, [
+      ...(bridge.messages.get(alice.id) ?? []),
+      kept,
+    ]);
+    const star = starred =>
+      http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/star`,
+        headers: json,
+        body: { messageId: kept.id, conversationId: alice.id, starred },
+      });
+    assert.equal((await star(true)).status, 200);
+    const ids = await http(port, { path: `/${helper.token}/api/starIds` });
+    assert.deepEqual(JSON.parse(ids.text).ids, [kept.id]);
+    const list = await http(port, {
+      path: `/${helper.token}/api/stars?conversationId=${alice.id}`,
+    });
+    const { items } = JSON.parse(list.text);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].message.body, 'keep this');
+    await star(false);
+    const after = await http(port, { path: `/${helper.token}/api/starIds` });
+    assert.deepEqual(JSON.parse(after.text).ids, []);
+  });
+
   it('sends a contact card with the phone number, nothing private', async () => {
     const sent = await http(port, {
       method: 'POST',

@@ -211,6 +211,7 @@ export function createWebServer({
   store,
   bridge,
   privateReplies = null,
+  stars = null,
   scheduled = null,
   contactPhotos = null,
   log,
@@ -974,6 +975,42 @@ export function createWebServer({
     }
     if (scheduled && route.startsWith('api/schedule')) {
       await handleScheduled(req, res, route, url);
+      return;
+    }
+    // Starred messages (decision F43), kept by the helper.
+    if (req.method === 'GET' && route === 'api/starIds') {
+      sendJson(res, 200, { ids: stars?.ids() ?? [] });
+      return;
+    }
+    if (req.method === 'GET' && route === 'api/stars') {
+      const conversationId = url.searchParams.get('conversationId') ?? '';
+      const items = [];
+      // Newest first; a message deleted since drops out of the list.
+      for (const item of (stars?.list(conversationId) ?? []).slice(0, 200)) {
+        try {
+          const { message } = await bridge.call('messages.get', {
+            messageId: item.messageId,
+          });
+          if (message) {
+            items.push({ ...item, message });
+          }
+        } catch {
+          // Gone or unreadable: leave it out.
+        }
+      }
+      sendJson(res, 200, { items });
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/star') {
+      const { messageId, conversationId, starred } = await readJson(req);
+      sendJson(res, 200, {
+        ok:
+          stars?.set({
+            messageId: String(messageId ?? ''),
+            conversationId: String(conversationId ?? ''),
+            starred: starred === true,
+          }) ?? false,
+      });
       return;
     }
     if (req.method === 'GET' && route === 'api/privateReplies') {

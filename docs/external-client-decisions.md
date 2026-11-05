@@ -1056,3 +1056,18 @@ marker. That is display only; other Signal apps wrap it their own way.
 
 WHY: Mike (2026-11-03): "full-on markdown capability", "* be a bullet, not
 -", and pasted text from LLMs should convert itself.
+
+## F43. Fork only: Backchannel Android's emoticons, double-click react, stars
+
+DECISION: three Backchannel Android features on the page, with Android's
+rules. Typed emoticons become emoji: :) :-) =) :( :-( ;) ;-) :'( :| :-| >:(
+O:) :-/ :-* at once (Backspace right after undoes), and :D :-D :P :p ;P :O
+:o XD xD <3 </3 :* when a space or new line follows; only on their own,
+after a space, a new line or the start. Double-clicking a message reacts
+with your first reaction and again takes it back. Messages can be starred
+from the ⋯ menu; the star list is in the chat list header (all chats) and
+the chat menu (this chat). Stars are kept by the helper in stars.json,
+since Signal Desktop has no star and Signal never syncs them.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."

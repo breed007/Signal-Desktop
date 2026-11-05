@@ -164,6 +164,7 @@ const ICONS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM16 16l4.5 4.5',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
   poll: 'M5 20V11M12 20V4M19 20v-6',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
   contact: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
@@ -2441,6 +2442,27 @@ function renderMessage(m, prev, next) {
     m.attachments.length === 0 &&
     isJumbo(m.body);
   const bubble = el('span', `bubble${jumbo ? ' jumbo' : ''}`);
+  // As Backchannel Android: double-click reacts with your first reaction,
+  // and again takes it back.
+  if (canReact() && canReplyTo(m)) {
+    bubble.addEventListener('mousedown', e => {
+      if (e.detail > 1 && !e.target.closest('a, button, video, audio, input')) {
+        e.preventDefault();
+      }
+    });
+    bubble.addEventListener('dblclick', async e => {
+      if (e.target.closest('a, button, video, audio, input, .media')) {
+        return;
+      }
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      const [first] = await getPreferredReactions();
+      if (first) {
+        const mine = m.reactions.find(r => r.fromMe)?.emoji;
+        sendReaction(m, first, mine === first);
+      }
+    });
+  }
 
   if (!outgoing && isGroupChat && firstOfRun) {
     const name = nameLine(nameOf(m.authorConversationId), m.author, 'author');
@@ -2482,6 +2504,11 @@ function renderMessage(m, prev, next) {
   }
 
   const meta = el('span', 'meta');
+  if (starredIds.has(m.id)) {
+    const star = icon('star');
+    star.classList.add('star-mark');
+    meta.append(star);
+  }
   meta.append(formatTime(m.sentAt));
   if (m.edited) {
     // As in Signal, "Edited" opens the earlier versions (decision F39).
@@ -2535,6 +2562,7 @@ function cachedMessage(m, prev, next) {
     next?.sentAt,
     capabilities,
     formatTime(m.sentAt),
+    starredIds.has(m.id),
   ]);
   const cached = messageCache.get(m.id);
   if (cached && cached.key === key) {
@@ -2892,6 +2920,7 @@ function openChatMenu(conversationId, anchor, page = null) {
       );
       add('search', 'Search in chat', () => startChatSearch(c.id));
       add('media', 'All media', () => openGallery(c.id));
+      add('star', 'Starred messages', () => openStarred(c.id));
       items.push(el('div', 'menu-separator'));
     }
     if (!blocked && !c.messageRequestPending) {
@@ -4770,6 +4799,107 @@ function renderBlockChooser() {
   );
 }
 
+// --- starred messages (decision F43) -----------------------------------------
+
+// Kept by the helper: Signal Desktop has no star and stars never sync.
+let starredIds = new Set();
+
+async function loadStarredIds() {
+  try {
+    starredIds = new Set((await api('api/starIds')).ids);
+  } catch {
+    // Without the list, nothing shows as starred.
+  }
+}
+
+async function setStar(m, starred) {
+  try {
+    await api('api/star', {
+      messageId: m.id,
+      conversationId: m.conversationId,
+      starred,
+    });
+  } catch (error) {
+    toast(`Couldn't star (${error.code ?? error.message}).`);
+    return;
+  }
+  if (starred) {
+    starredIds.add(m.id);
+  } else {
+    starredIds.delete(m.id);
+  }
+  if (m.conversationId === selectedId && messages.has(m.id)) {
+    renderMessages();
+  }
+}
+
+// One chat's starred messages, or every chat's, newest star first.
+async function openStarred(conversationId = null) {
+  closePopovers();
+  const list = $('starred-list');
+  list.replaceChildren(el('li', 'sub', 'Loading…'));
+  $('starred-title').textContent = conversationId
+    ? `Starred in ${displayTitle(conversations.get(conversationId) ?? { title: 'this chat' })}`
+    : 'Starred messages';
+  $('starred').hidden = false;
+  let items = [];
+  try {
+    const query = conversationId
+      ? `?${new URLSearchParams({ conversationId })}`
+      : '';
+    ({ items } = await api(`api/stars${query}`));
+  } catch (error) {
+    list.replaceChildren(
+      el('li', 'sub', `Couldn't load (${error.code ?? error.message}).`)
+    );
+    return;
+  }
+  list.replaceChildren(
+    ...(items.length === 0
+      ? [el('li', 'sub', 'No starred messages. Star one from its ⋯ menu.')]
+      : items.map(({ message }) => starredRow(message)))
+  );
+}
+
+function starredRow(m) {
+  const c = conversations.get(m.conversationId);
+  const li = el('li', 'search-result');
+  const from =
+    m.direction === 'outgoing'
+      ? 'You'
+      : (m.author?.title ?? nameOf(m.authorConversationId));
+  const where = c ? displayTitle(c) : 'Unknown chat';
+  const title = c?.type === 'group' ? `${from} in ${where}` : `${from} · ${where}`;
+  const text = el('span', 'row-text');
+  const top = el('span', 'row-top');
+  top.append(
+    el('span', 'title', title),
+    el('span', 'time', shortTime(m.sentAt))
+  );
+  text.append(top, el('span', 'preview', summarize(m)));
+  li.append(c ? conversationAvatar(c, 40) : el('span', 'avatar'), text);
+  li.addEventListener('click', () => {
+    closeStarred();
+    jumpToMessage(m);
+  });
+  return li;
+}
+
+function closeStarred() {
+  $('starred').hidden = true;
+}
+
+$('starred-open').append(icon('star'));
+$('starred-open').addEventListener('click', () => openStarred());
+$('starred-close').append(icon('close'));
+$('starred-close').addEventListener('click', closeStarred);
+$('starred').addEventListener('click', e => {
+  if (e.target === $('starred')) {
+    closeStarred();
+  }
+});
+loadStarredIds();
+
 // --- contact cards (decision F41) -------------------------------------------
 
 // A shared contact, as Signal's bubble shows it, with the numbers, emails
@@ -5647,6 +5777,10 @@ function openMoreMenu(m, anchor) {
   }
   if (m.canEdit) {
     add('edit', 'Edit', () => startEdit(m));
+  }
+  if (canReplyTo(m)) {
+    const starred = starredIds.has(m.id);
+    add('star', starred ? 'Unstar' : 'Star', () => setStar(m, !starred));
   }
   add('trash', 'Delete for me', () => deleteMessage(m, false));
   if (m.canDeleteForEveryone) {
@@ -7872,6 +8006,13 @@ function applyBulletShortcut() {
 // A new line in a list starts the next item (the same bullet, or the next
 // number); on an empty item it ends the list instead.
 function insertNewline() {
+  const before = selectionOffsets();
+  if (before && before.start === before.end) {
+    const shrink = replaceEmoticon(before.start, EMOTICONS_AT_SPACE, false);
+    if (shrink !== null) {
+      selectOffsets(before.start - shrink);
+    }
+  }
   const at = selectionOffsets() ?? composeSelection;
   const chars = readCompose();
   const caret = at?.start ?? chars.length;
@@ -7895,6 +8036,94 @@ function insertNewline() {
     : `${m[1]}${Number(m[3]) + 1}${m[4]} `;
   spliceCompose(caret, caret, charsOf(`\n${next}`));
   onComposeInput();
+}
+
+// Typed emoticons as emoji, Backchannel Android's list (decision F43).
+// These change the moment the last character goes in; the second list
+// waits for a space or new line, so ":Pizza" stays as typed. Either counts
+// only on its own: after a space, a new line or the start of the text.
+const EMOTICONS_NOW = {
+  ':)': '🙂',
+  ':-)': '🙂',
+  '=)': '🙂',
+  ':(': '🙁',
+  ':-(': '🙁',
+  ';)': '😉',
+  ';-)': '😉',
+  ":'(": '😢',
+  ':|': '😐',
+  ':-|': '😐',
+  '>:(': '😠',
+  'O:)': '😇',
+  ':-/': '😕',
+  ':-*': '😘',
+};
+const EMOTICONS_AT_SPACE = {
+  ':D': '😃',
+  ':-D': '😃',
+  ':P': '😛',
+  ':p': '😛',
+  ';P': '😜',
+  ':O': '😮',
+  ':o': '😮',
+  XD: '😆',
+  xD: '😆',
+  '<3': '❤️',
+  '</3': '💔',
+  ':*': '😘',
+};
+
+// The emoticon from `table` that ends at `end`, standing on its own,
+// replaced in the box. Returns how many characters it shortened the text
+// by, or null when there was none.
+function replaceEmoticon(end, table, undo) {
+  const chars = readCompose();
+  for (const [text, emoji] of Object.entries(table)) {
+    const start = end - text.length;
+    if (start < 0) {
+      continue;
+    }
+    const piece = chars.slice(start, end);
+    if (piece.some(c => c.mention) || lineText(piece) !== text) {
+      continue;
+    }
+    const before = chars[start - 1];
+    if (before && before.ch !== ' ' && before.ch !== '\n') {
+      continue;
+    }
+    const original = [...chars];
+    const replaced = charsOf(emoji);
+    chars.splice(start, text.length, ...replaced);
+    drawCompose(chars);
+    if (undo) {
+      // Backspace right after puts the characters back.
+      markdownUndo = {
+        chars: original,
+        caret: start + replaced.length,
+        restore: end,
+      };
+    }
+    return text.length - replaced.length;
+  }
+  return null;
+}
+
+// After a character is typed: an instant emoticon ending at the caret, or
+// a waiting one ending just before a typed space.
+function applyEmoticon(typed) {
+  const at = selectionOffsets();
+  if (!at || at.start !== at.end) {
+    return false;
+  }
+  const spaced = typed === ' ';
+  const shrink = spaced
+    ? replaceEmoticon(at.start - 1, EMOTICONS_AT_SPACE, false)
+    : replaceEmoticon(at.start, EMOTICONS_NOW, true);
+  if (shrink === null) {
+    return false;
+  }
+  selectOffsets(at.start - shrink);
+  return true;
 }
 
 function undoMarkdown() {
@@ -8137,8 +8366,10 @@ function wireComposeBox(box, onInput) {
     }
     markdownUndo = null;
     markdownCaret = null;
-    if (e.inputType === 'insertText' && e.data === ' ' && !e.isComposing) {
-      applyBulletShortcut();
+    if (e.inputType === 'insertText' && e.data && !e.isComposing) {
+      if (!applyEmoticon(e.data) && e.data === ' ') {
+        applyBulletShortcut();
+      }
     }
   });
   box.addEventListener('input', onInput);
@@ -9378,6 +9609,8 @@ document.addEventListener('keydown', e => {
       closeScheduledList();
     } else if (!$('contact-chooser').hidden) {
       closeContactChooser();
+    } else if (!$('starred').hidden) {
+      closeStarred();
     } else if (!$('block-chooser').hidden) {
       closeBlockChooser();
     } else if (!$('forward').hidden) {

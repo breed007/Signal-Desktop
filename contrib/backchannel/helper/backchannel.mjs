@@ -44,6 +44,7 @@ import {
 import { ContactPhotoRefresh } from './contactPhotos.mjs';
 import { largeEmojiFontLoader } from './fonts.mjs';
 import { PrivateReplies } from './privateReplies.mjs';
+import { Stars } from './stars.mjs';
 import { ScheduledMessages } from './scheduled.mjs';
 import { allowedOrigins, createWebServer } from './server.mjs';
 import { Store } from './store.mjs';
@@ -244,6 +245,7 @@ web = createWebServer({
   store,
   bridge,
   privateReplies: new PrivateReplies(join(configDir, 'private-replies.json')),
+  stars: new Stars(join(configDir, 'stars.json')),
   scheduled,
   contactPhotos,
   log,
