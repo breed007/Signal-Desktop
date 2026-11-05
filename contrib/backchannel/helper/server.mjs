@@ -216,6 +216,7 @@ export function createWebServer({
   privateReplies = null,
   stars = null,
   customPhotos = null,
+  immich = null,
   scheduled = null,
   contactPhotos = null,
   log,
@@ -276,6 +277,56 @@ export function createWebServer({
       avatarLoads.set(key, loading);
     }
     return loading;
+  }
+
+  async function handleImmich(req, res, action, url) {
+    if (!immich) {
+      sendJson(res, 404, { error: { code: 'NOT_FOUND' } });
+      return;
+    }
+    const q = name => url.searchParams.get(name) ?? '';
+    const page = Math.max(1, Math.min(1000, Number(q('page')) || 1));
+    try {
+      if (req.method === 'GET' && action === 'status') {
+        sendJson(res, 200, immich.status());
+      } else if (req.method === 'POST' && action === 'config') {
+        const { url: server, apiKey } = await readJson(req);
+        const result = await immich.configure(
+          String(server ?? '').trim(),
+          String(apiKey ?? '')
+        );
+        sendJson(
+          res,
+          result.ok ? 200 : 400,
+          result.ok ? immich.status() : { error: { code: result.code } }
+        );
+      } else if (req.method === 'GET' && action === 'recent') {
+        sendJson(res, 200, await immich.recent(page, q('albumId') || null));
+      } else if (req.method === 'GET' && action === 'search') {
+        sendJson(res, 200, await immich.search(q('q').slice(0, 200), page));
+      } else if (req.method === 'GET' && action === 'albums') {
+        sendJson(res, 200, { albums: await immich.albums() });
+      } else if (
+        req.method === 'GET' &&
+        (action === 'thumbnail' || action === 'original') &&
+        /^[0-9a-f-]{1,64}$/i.test(q('id'))
+      ) {
+        const file =
+          action === 'thumbnail'
+            ? await immich.thumbnail(q('id'))
+            : await immich.original(q('id'), q('mimeType'));
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          'Content-Type': file.contentType,
+          'Cache-Control': 'private, max-age=86400',
+        });
+        res.end(file.bytes);
+      } else {
+        sendJson(res, 404, { error: { code: 'NOT_FOUND' } });
+      }
+    } catch (error) {
+      sendJson(res, 502, { error: { code: error.code ?? 'IMMICH_ERROR' } });
+    }
   }
 
   function broadcast(type, data) {
@@ -869,6 +920,11 @@ export function createWebServer({
         200,
         await bridge.call('groups.update', { conversationId, change })
       );
+      return;
+    }
+    // Immich picker (decision F48). The key never comes back to the page.
+    if (route.startsWith('api/immich/')) {
+      await handleImmich(req, res, route.slice('api/immich/'.length), url);
       return;
     }
     if (req.method === 'GET' && route === 'api/customPhotos') {

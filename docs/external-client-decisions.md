@@ -1134,3 +1134,20 @@ WHY: Mike (2026-11-05): "comment and emoji on a single entry in a
 multi image post. Even if that requires sending that single image back to
 the chat as a quote of the original with the emoji and the comment," and
 "Backchannel Web needs to know about" it.
+
+## F48. Fork only: the Immich picker
+
+DECISION: as Backchannel Android bc9, the composer has an Immich button.
+It shows your own Immich server's recent photos and videos, its albums and
+its smart search, and attaches the picks like any file. HEIC and RAW go as
+Immich's JPEG preview. The helper makes the Immich calls, with the API key
+in the x-api-key header: POST /api/search/metadata, POST /api/search/smart,
+GET /api/albums, and GET /api/assets/{id}/thumbnail and /original. The
+server address and key are saved in immich.json in the helper's config
+folder (mode 0600). The page never gets the key back, and needs no CORS
+from Immich. Backchannel only reads from Immich. Sending uses Signal's
+normal attachment path, so there is no new Allow.
+
+WHY: Mike (2026-11-05), on Android parity: "Where we can get parity, we
+should," plus the standing rule that a feature on one side is built on the
+other where possible.

@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -1368,6 +1368,99 @@ describe('backchannel helper', () => {
     await star(false);
     const after = await http(port, { path: `/${helper.token}/api/starIds` });
     assert.deepEqual(JSON.parse(after.text).ids, []);
+  });
+
+  it('proxies Immich and never hands back the key', async () => {
+    const seen = [];
+    const immich = createServer((req, res) => {
+      seen.push({ method: req.method, url: req.url });
+      if (req.headers['x-api-key'] !== 'secret-key') {
+        res.writeHead(401).end();
+        return;
+      }
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/albums') {
+        res.end(
+          JSON.stringify([
+            {
+              id: 'a1',
+              albumName: 'Trip',
+              assetCount: 2,
+              albumThumbnailAssetId: 'b2',
+            },
+          ])
+        );
+      } else if (req.url === '/api/search/metadata') {
+        res.end(
+          JSON.stringify({
+            assets: {
+              items: [
+                {
+                  id: 'abc1',
+                  type: 'IMAGE',
+                  originalFileName: 'x.heic',
+                  originalMimeType: 'image/heic',
+                },
+              ],
+              nextPage: '2',
+            },
+          })
+        );
+      } else if (req.url.startsWith('/api/assets/abc1/')) {
+        res.setHeader('content-type', 'image/jpeg');
+        res.end(Buffer.from([0xff, 0xd8]));
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+    await new Promise(r => immich.listen(0, '127.0.0.1', r));
+    const server = `http://127.0.0.1:${immich.address().port}`;
+    try {
+      const configure = apiKey =>
+        http(port, {
+          method: 'POST',
+          path: `/${helper.token}/api/immich/config`,
+          headers: json,
+          body: { url: `${server}/api/`, apiKey },
+        });
+      const bad = await configure('wrong');
+      assert.equal(bad.status, 400);
+      assert.equal(JSON.parse(bad.text).error.code, 'BAD_KEY');
+      const good = await configure('secret-key');
+      assert.equal(good.status, 200);
+      assert.deepEqual(JSON.parse(good.text), { connected: true, url: server });
+      const status = await http(port, {
+        path: `/${helper.token}/api/immich/status`,
+      });
+      assert.ok(!status.text.includes('secret-key'));
+      const recent = await http(port, {
+        path: `/${helper.token}/api/immich/recent?page=1`,
+      });
+      const { items, nextPage } = JSON.parse(recent.text);
+      assert.equal(items[0].id, 'abc1');
+      assert.equal(nextPage, 2);
+      const original = await http(port, {
+        path: `/${helper.token}/api/immich/original?id=abc1&mimeType=image%2Fheic`,
+      });
+      assert.equal(original.status, 200);
+      assert.equal(seen.at(-1).url, '/api/assets/abc1/thumbnail?size=preview');
+      const bogus = await http(port, {
+        path: `/${helper.token}/api/immich/original?id=..%2Fx`,
+      });
+      assert.equal(bogus.status, 404);
+      await http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/immich/config`,
+        headers: json,
+        body: { url: '', apiKey: '' },
+      });
+      const off = await http(port, {
+        path: `/${helper.token}/api/immich/status`,
+      });
+      assert.equal(JSON.parse(off.text).connected, false);
+    } finally {
+      immich.close();
+    }
   });
 
   it("serves your own photo for someone over Signal's", async () => {

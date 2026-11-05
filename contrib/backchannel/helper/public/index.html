@@ -158,6 +158,13 @@
           <button
             type="button"
             class="icon-button"
+            id="immich-open"
+            title="Immich"
+            aria-label="Immich"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
             id="sticker-open"
             title="Stickers"
             aria-label="Stickers"
@@ -341,6 +348,23 @@
           ></button>
         </div>
         <ul class="forward-list starred-list" id="starred-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="immich" hidden>
+      <div class="modal immich-modal" role="dialog" aria-labelledby="immich-title">
+        <div class="modal-head">
+          <span id="immich-title">Immich</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="immich-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="immich-tabs" id="immich-tabs"></div>
+        <div class="immich-body" id="immich-body"></div>
+        <div class="details-actions immich-foot" id="immich-foot"></div>
       </div>
     </div>
     <div class="modal-backdrop" id="whats-new" hidden>

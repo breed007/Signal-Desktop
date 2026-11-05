@@ -5153,6 +5153,339 @@ $('starred').addEventListener('click', e => {
 loadStarredIds();
 loadCustomPhotos();
 
+// --- Immich picker (decision F48) ------------------------------------------
+
+// As Backchannel Android bc9: browse your own Immich server's recent photos,
+// albums and smart search, and attach picks like any file. The helper talks
+// to Immich and keeps the API key; the page never sees it.
+let immichState = null;
+
+async function openImmich() {
+  closePopovers();
+  if (!selectedId) {
+    return;
+  }
+  immichState = {
+    conversationId: selectedId,
+    view: 'recent',
+    albumId: null,
+    albumName: null,
+    query: '',
+    items: [],
+    nextPage: null,
+    picked: new Map(),
+    status: null,
+  };
+  $('immich').hidden = false;
+  $('immich-body').replaceChildren(el('p', 'sub', 'Loading…'));
+  $('immich-tabs').replaceChildren();
+  $('immich-foot').replaceChildren();
+  try {
+    immichState.status = await api('api/immich/status');
+  } catch (error) {
+    immichState.status = { connected: false };
+  }
+  if (immichState.status.connected) {
+    showImmichView('recent');
+  } else {
+    showImmichConnect();
+  }
+}
+
+function closeImmich() {
+  immichState = null;
+  $('immich').hidden = true;
+  $('immich-body').replaceChildren();
+}
+
+const IMMICH_ERRORS = {
+  BAD_KEY: 'Immich refused that API key.',
+  UNREACHABLE: "Couldn't reach that Immich server from Backchannel's server.",
+  INVALID_ARGUMENT: 'Enter the server address (https://…) and an API key.',
+  NOT_CONNECTED: 'Connect your Immich server first.',
+};
+
+function immichError(error) {
+  return IMMICH_ERRORS[error.code] ?? `Immich failed (${error.code ?? error.message}).`;
+}
+
+function showImmichConnect() {
+  const form = el('form', 'immich-form');
+  const server = el('input', 'setting-input');
+  server.type = 'url';
+  server.placeholder = 'Server address, like https://photos.example.com';
+  server.value = immichState.status?.url ?? '';
+  const key = el('input', 'setting-input');
+  key.type = 'password';
+  key.placeholder = 'API key (Immich: Account settings > API keys)';
+  key.autocomplete = 'off';
+  const note = el(
+    'p',
+    'setting-note',
+    "The key stays on Backchannel's server; this page never gets it back. Backchannel only reads your library."
+  );
+  const save = el('button', 'setting-button primary', 'Connect');
+  save.type = 'submit';
+  form.append(server, key, note, save);
+  if (immichState.status?.connected) {
+    const disconnect = el('button', 'setting-button', 'Disconnect');
+    disconnect.type = 'button';
+    disconnect.addEventListener('click', async () => {
+      await api('api/immich/config', { url: '', apiKey: '' }).catch(() => {});
+      immichState.status = { connected: false, url: null };
+      showImmichConnect();
+    });
+    form.append(disconnect);
+  }
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    save.disabled = true;
+    try {
+      immichState.status = await api('api/immich/config', {
+        url: server.value.trim(),
+        apiKey: key.value.trim(),
+      });
+      showImmichView('recent');
+    } catch (error) {
+      toast(immichError(error));
+      save.disabled = false;
+    }
+  });
+  $('immich-tabs').replaceChildren();
+  $('immich-foot').replaceChildren();
+  $('immich-body').replaceChildren(form);
+  setTimeout(() => (server.value ? key : server).focus());
+}
+
+function renderImmichTabs() {
+  const tabs = $('immich-tabs');
+  const tab = (view, label) => {
+    const b = el(
+      'button',
+      `setting-button small${immichState.view === view ? ' primary' : ''}`,
+      label
+    );
+    b.type = 'button';
+    b.addEventListener('click', () => showImmichView(view));
+    return b;
+  };
+  const search = el('input', 'setting-input');
+  search.type = 'search';
+  search.placeholder = 'Smart search, like "beach at sunset"';
+  search.value = immichState.query;
+  search.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && search.value.trim()) {
+      e.preventDefault();
+      immichState.query = search.value.trim();
+      showImmichView('search');
+    }
+  });
+  const settings = el('button', 'icon-button');
+  settings.type = 'button';
+  settings.title = 'Immich server';
+  settings.append(icon('settings'));
+  settings.addEventListener('click', showImmichConnect);
+  tabs.replaceChildren(tab('recent', 'Recent'), tab('albums', 'Albums'), search, settings);
+}
+
+async function showImmichView(view, { more = false } = {}) {
+  const state = immichState;
+  if (!state) {
+    return;
+  }
+  state.view = view;
+  if (view !== 'album') {
+    state.albumId = view === 'recent' ? null : state.albumId;
+  }
+  renderImmichTabs();
+  renderImmichFoot();
+  const body = $('immich-body');
+  if (!more) {
+    state.items = [];
+    state.nextPage = null;
+    body.replaceChildren(el('p', 'sub', 'Loading…'));
+  }
+  try {
+    if (view === 'albums') {
+      const { albums } = await api('api/immich/albums');
+      if (immichState !== state) {
+        return;
+      }
+      body.replaceChildren(immichAlbumGrid(albums));
+      return;
+    }
+    const page = more ? state.nextPage : 1;
+    const params = new URLSearchParams({ page: String(page) });
+    let path = 'api/immich/recent';
+    if (view === 'search') {
+      path = 'api/immich/search';
+      params.set('q', state.query);
+    } else if (view === 'album') {
+      params.set('albumId', state.albumId);
+    }
+    const { items, nextPage } = await api(`${path}?${params}`);
+    if (immichState !== state) {
+      return;
+    }
+    state.items.push(...items);
+    state.nextPage = nextPage;
+    body.replaceChildren(immichAssetGrid());
+  } catch (error) {
+    if (immichState === state) {
+      body.replaceChildren(el('p', 'sub', immichError(error)));
+    }
+  }
+}
+
+function immichThumb(id) {
+  const img = el('img');
+  img.alt = '';
+  img.loading = 'lazy';
+  img.src = `api/immich/thumbnail?${new URLSearchParams({ id })}`;
+  return img;
+}
+
+function immichAlbumGrid(albums) {
+  if (albums.length === 0) {
+    return el('p', 'sub', 'No albums.');
+  }
+  const grid = el('div', 'immich-grid');
+  for (const album of albums) {
+    const tile = el('button', 'immich-tile');
+    tile.type = 'button';
+    if (album.thumbnailId) {
+      tile.append(immichThumb(album.thumbnailId));
+    }
+    tile.append(el('span', 'immich-album-name', `${album.name} (${album.count})`));
+    tile.addEventListener('click', () => {
+      immichState.albumId = album.id;
+      immichState.albumName = album.name;
+      showImmichView('album');
+    });
+    grid.append(tile);
+  }
+  return grid;
+}
+
+function immichAssetGrid() {
+  const state = immichState;
+  const wrap = el('div');
+  if (state.view === 'album') {
+    wrap.append(el('p', 'sub', state.albumName ?? 'Album'));
+  }
+  if (state.items.length === 0) {
+    wrap.append(el('p', 'sub', 'Nothing here.'));
+    return wrap;
+  }
+  const grid = el('div', 'immich-grid');
+  for (const item of state.items) {
+    const tile = el('button', 'immich-tile');
+    tile.type = 'button';
+    tile.title = item.fileName;
+    tile.append(immichThumb(item.id));
+    if (item.type === 'video') {
+      tile.append(el('span', 'immich-video', '▶ Video'));
+    }
+    const mark = () => {
+      tile.classList.toggle('picked', state.picked.has(item.id));
+      tile.querySelector('.immich-check')?.remove();
+      if (state.picked.has(item.id)) {
+        tile.append(
+          el('span', 'immich-check', String([...state.picked.keys()].indexOf(item.id) + 1))
+        );
+      }
+    };
+    tile.addEventListener('click', () => {
+      if (state.picked.has(item.id)) {
+        state.picked.delete(item.id);
+      } else if (state.picked.size < MAX_DRAFTS) {
+        state.picked.set(item.id, item);
+      } else {
+        toast(`At most ${MAX_DRAFTS} at a time.`);
+      }
+      // Numbers shift when one is taken out.
+      grid.querySelectorAll('.immich-tile').forEach(t => t.refresh?.());
+      renderImmichFoot();
+    });
+    tile.refresh = mark;
+    mark();
+    grid.append(tile);
+  }
+  wrap.append(grid);
+  if (state.nextPage) {
+    const more = el('button', 'setting-button immich-more', 'Load more');
+    more.type = 'button';
+    more.addEventListener('click', () => {
+      more.disabled = true;
+      showImmichView(state.view, { more: true });
+    });
+    wrap.append(more);
+  }
+  return wrap;
+}
+
+function renderImmichFoot() {
+  const state = immichState;
+  const count = el(
+    'span',
+    'sub',
+    state.picked.size ? `${state.picked.size} selected` : 'Pick photos or videos'
+  );
+  const attach = el('button', 'setting-button primary', 'Attach');
+  attach.type = 'button';
+  attach.disabled = state.picked.size === 0;
+  attach.addEventListener('click', () => attachImmich(attach));
+  $('immich-foot').replaceChildren(count, attach);
+}
+
+async function attachImmich(button) {
+  const state = immichState;
+  button.disabled = true;
+  button.textContent = 'Getting files…';
+  const files = [];
+  try {
+    for (const item of state.picked.values()) {
+      const res = await fetch(
+        `api/immich/original?${new URLSearchParams({ id: item.id, mimeType: item.mimeType })}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(`HTTP ${res.status}`), {
+          code: data.error?.code,
+        });
+      }
+      const blob = await res.blob();
+      const converted = blob.type !== item.mimeType && blob.type.startsWith('image/jpeg');
+      const name = converted
+        ? item.fileName.replace(/\.[^.]+$/, '') + '.jpg'
+        : item.fileName || 'photo';
+      files.push(new File([blob], name, { type: blob.type || item.mimeType }));
+    }
+  } catch (error) {
+    toast(immichError(error));
+    button.disabled = false;
+    button.textContent = 'Attach';
+    return;
+  }
+  if (immichState !== state) {
+    return;
+  }
+  if (selectedId === state.conversationId) {
+    addDrafts(files);
+  }
+  closeImmich();
+}
+
+$('immich-open').append(icon('media'));
+$('immich-open').addEventListener('click', openImmich);
+$('immich-close').append(icon('close'));
+$('immich-close').addEventListener('click', closeImmich);
+$('immich').addEventListener('click', e => {
+  if (e.target === $('immich')) {
+    closeImmich();
+  }
+});
+
 // --- What's New (decision F45) ---------------------------------------------
 
 // Newest first. As Backchannel Android for now: every entry since the
@@ -5161,6 +5494,7 @@ const WHATS_NEW = [
   [
     '2026-11-05',
     [
+      'Immich: attach photos and videos straight from your own Immich server (the photos button by Contact). Your API key stays on your server.',
       'React or comment on one photo of an album: open it and press Reply at the top. Your reply quotes the message and carries that photo.',
       'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
       'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
@@ -10026,6 +10360,8 @@ document.addEventListener('keydown', e => {
       closeContactChooser();
     } else if (!$('whats-new').hidden) {
       closeWhatsNew();
+    } else if (!$('immich').hidden) {
+      closeImmich();
     } else if (!$('starred').hidden) {
       closeStarred();
     } else if (!$('block-chooser').hidden) {

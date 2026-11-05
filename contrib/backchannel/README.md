@@ -40,6 +40,9 @@ Backchannel does. Each new one is added here when it ships.
   sends each chat its own copy.
 - **Starred messages.** Star any message from its menu and find it again
   in one list, for all chats or one. Kept on your server.
+- **Immich.** Attach photos and videos straight from your own Immich
+  server: recent, albums and smart search. The API key stays on your
+  server.
 - **Reply to one photo of an album.** Signal can only quote the whole
   message; Backchannel's photo viewer sends your emoji or comment with
   that one photo.
