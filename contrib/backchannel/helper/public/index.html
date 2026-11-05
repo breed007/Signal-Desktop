@@ -604,6 +604,14 @@
           aria-label="Show in chat"
           hidden
         ></button>
+        <button
+          type="button"
+          class="icon-button"
+          id="lightbox-reply"
+          title="Reply to this photo"
+          aria-label="Reply to this photo"
+          hidden
+        ></button>
         <a
           class="icon-button"
           id="lightbox-save"
@@ -635,6 +643,18 @@
           aria-label="Next"
         ></button>
       </div>
+      <form class="lightbox-reply" id="lightbox-reply-form" hidden>
+        <div class="lightbox-reply-emoji" id="lightbox-reply-emoji"></div>
+        <div class="lightbox-reply-row">
+          <input
+            type="text"
+            id="lightbox-reply-text"
+            placeholder="Comment on this photo"
+            autocomplete="off"
+          />
+          <button type="submit" class="setting-button primary">Send</button>
+        </div>
+      </form>
       <div class="lightbox-caption" id="lightbox-caption"></div>
       <div class="lightbox-strip" id="lightbox-strip" hidden></div>
     </div>

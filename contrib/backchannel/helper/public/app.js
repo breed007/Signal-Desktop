@@ -1965,6 +1965,7 @@ function openLightbox(m, index) {
     gallery: null,
   };
   $('lightbox-goto').hidden = true;
+  closePhotoReply();
   renderLightboxStrip();
   showLightboxItem();
   $('lightbox').hidden = false;
@@ -1991,6 +1992,7 @@ function showLightboxItem() {
   $('lightbox-caption').textContent = a.caption ?? '';
   $('lightbox-save').href = attachmentUrl(m, index, a, { download: '1' });
   $('lightbox-save').download = a.fileName ?? 'attachment';
+  $('lightbox-reply').hidden = !canSend() || !m.conversationId;
   const several = items.length > 1;
   $('lightbox-count').textContent = several
     ? `${pos + 1} of ${items.length}`
@@ -2055,8 +2057,71 @@ function stepLightbox(delta) {
   showLightboxItem();
 }
 
+// Reply to one photo of an album (decision F47), as Backchannel Android
+// bc9: a new message quoting the original, carrying that photo again (a
+// quote alone shows the album's first photo on phones), with an emoji or a
+// comment as its text.
+async function openPhotoReply() {
+  const form = $('lightbox-reply-form');
+  if (!form.hidden) {
+    closePhotoReply();
+    return;
+  }
+  const row = $('lightbox-reply-emoji');
+  row.replaceChildren(
+    ...(await getPreferredReactions()).map(emoji => {
+      const b = el('button', 'lightbox-reply-pick', emoji);
+      b.type = 'button';
+      b.addEventListener('click', () => sendPhotoReply(emoji));
+      return b;
+    })
+  );
+  form.hidden = false;
+  $('lightbox-reply-text').value = '';
+  $('lightbox-reply-text').focus();
+}
+
+function closePhotoReply() {
+  $('lightbox-reply-form').hidden = true;
+}
+
+async function sendPhotoReply(text) {
+  if (!lightbox || !text.trim()) {
+    return;
+  }
+  const { m, items, pos } = lightbox;
+  const index = items[pos];
+  const a = m.attachments[index];
+  const form = $('lightbox-reply-form');
+  form.classList.add('busy');
+  try {
+    const res = await fetch(attachmentUrl(m, index, a));
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const file = new File([blob], a.fileName ?? 'photo', {
+      type: a.contentType || blob.type,
+    });
+    const uploadId = await uploadFile(file);
+    await api('api/send', {
+      conversationId: m.conversationId,
+      body: text.trim(),
+      attachmentUploadIds: [uploadId],
+      quoteMessageId: m.id,
+    });
+    closePhotoReply();
+    toast('Reply sent.');
+  } catch (error) {
+    toast(`Not sent (${error.code ?? error.message}).`);
+  } finally {
+    form.classList.remove('busy');
+  }
+}
+
 function closeLightbox() {
   lightbox = null;
+  closePhotoReply();
   $('lightbox').hidden = true;
   $('lightbox-stage').replaceChildren();
   $('lightbox-strip').replaceChildren();
@@ -5096,6 +5161,7 @@ const WHATS_NEW = [
   [
     '2026-11-05',
     [
+      'React or comment on one photo of an album: open it and press Reply at the top. Your reply quotes the message and carries that photo.',
       'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
       'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
       'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',
@@ -9837,6 +9903,12 @@ $('compose-preview-close').addEventListener('click', dismissLinkPreview);
 $('lightbox-close').append(icon('close'));
 $('lightbox-save').append(icon('download'));
 $('lightbox-close').addEventListener('click', closeLightbox);
+$('lightbox-reply').append(icon('reply'));
+$('lightbox-reply').addEventListener('click', openPhotoReply);
+$('lightbox-reply-form').addEventListener('submit', e => {
+  e.preventDefault();
+  sendPhotoReply($('lightbox-reply-text').value);
+});
 $('lightbox-goto').append(icon('goto'));
 $('lightbox-goto').addEventListener('click', () => {
   const m = lightbox?.gallery;
@@ -9881,7 +9953,13 @@ $('lightbox-next').append(icon('next'));
 $('lightbox-prev').addEventListener('click', () => stepLightbox(-1));
 $('lightbox-next').addEventListener('click', () => stepLightbox(1));
 document.addEventListener('keydown', e => {
-  if (!lightbox || e.altKey || e.ctrlKey || e.metaKey) {
+  if (
+    !lightbox ||
+    e.altKey ||
+    e.ctrlKey ||
+    e.metaKey ||
+    e.target === $('lightbox-reply-text')
+  ) {
     return;
   }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -9930,6 +10008,10 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     closePopovers();
+    if (lightbox && !$('lightbox-reply-form').hidden) {
+      closePhotoReply();
+      return;
+    }
     if (lightbox) {
       closeLightbox();
       return;

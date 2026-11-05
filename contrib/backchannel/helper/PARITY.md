@@ -133,6 +133,7 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | Your own photo for anyone                         | done      | F44: kept by the helper                                |
 | What's New after an update                        | done      | F45: all entries since the start, new ones marked      |
 | Immich picker                                     | missing   | Android bc9 not released yet                           |
+| Reply to one photo of an album                    | done      | F47                                                    |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
 | Link someone to a phone contact                   | different | F46: phone links sync over; on the web, nickname + own photo |
 | Notifications, screenshots, passphrase, push, icon, Photo apps, Open links | different | phone-only |

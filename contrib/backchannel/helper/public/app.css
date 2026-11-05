@@ -1102,6 +1102,47 @@ button {
   object-fit: contain;
 }
 
+.lightbox-reply {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+.lightbox-reply.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.lightbox-reply-emoji {
+  display: flex;
+  gap: 4px;
+}
+.lightbox-reply-pick {
+  border: 0;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 24px;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+.lightbox-reply-pick:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+.lightbox-reply-row {
+  display: flex;
+  gap: 8px;
+  width: min(480px, 100%);
+}
+.lightbox-reply-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 18px;
+  border: 0;
+  font: inherit;
+}
+
 .lightbox-caption {
   padding: 12px 24px 20px;
   text-align: center;

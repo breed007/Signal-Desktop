@@ -1119,3 +1119,18 @@ phone shows on the web as a phone contact's name and photo do.
 WHY: Mike (2026-11-05): "Would be cool if it would sync the 'Link to
 contact manually' from the phone," and "I was looking to have Backchannel
 Web do that, as well."
+
+## F47. Fork only: reply to one photo of an album
+
+DECISION: as Backchannel Android bc9, the photo viewer has a Reply button.
+It opens your reactions and a comment box. Either one sends a new message to
+the same chat: that text, a quote of the original message, and the photo
+(or video) you were looking at, attached again. A quote alone isn't enough
+because Signal's phones show the album's first photo in a quote. The page
+does it with existing calls (attachment read, upload, send), so it needs no
+new Allow.
+
+WHY: Mike (2026-11-05): "comment and emoji on a single entry in a
+multi image post. Even if that requires sending that single image back to
+the chat as a quote of the original with the emoji and the comment," and
+"Backchannel Web needs to know about" it.

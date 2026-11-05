@@ -40,6 +40,9 @@ Backchannel does. Each new one is added here when it ships.
   sends each chat its own copy.
 - **Starred messages.** Star any message from its menu and find it again
   in one list, for all chats or one. Kept on your server.
+- **Reply to one photo of an album.** Signal can only quote the whole
+  message; Backchannel's photo viewer sends your emoji or comment with
+  that one photo.
 - **Your own photo for anyone.** Pick a picture for a person in their
   chat details; it beats their profile photo, only you see it.
 - **Emoticons and double-click.** Typing :) or <3 makes the emoji, and
