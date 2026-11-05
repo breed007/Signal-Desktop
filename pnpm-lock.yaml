@@ -1122,8 +1122,8 @@ importers:
         specifier: 1.5.0
         version: 1.5.0
       node-addon-api:
-        specifier: 8.8.0
-        version: 8.8.0
+        specifier: 8.9.2
+        version: 8.9.2
     devDependencies:
       '@types/bindings':
         specifier: 1.5.5
