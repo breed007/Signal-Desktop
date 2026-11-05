@@ -240,6 +240,34 @@ function colorFor(id, avatarColor) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+// conversationId -> version of the photo you set for them (decision F44).
+let customPhotoVersions = {};
+
+async function loadCustomPhotos() {
+  try {
+    const { versions } = await api('api/customPhotos');
+    setCustomPhotos(versions);
+  } catch {
+    // Signal's photos still show.
+  }
+}
+
+function setCustomPhotos(versions) {
+  const before = JSON.stringify(customPhotoVersions);
+  customPhotoVersions = versions && typeof versions === 'object' ? versions : {};
+  if (JSON.stringify(customPhotoVersions) === before) {
+    return;
+  }
+  messageCache.clear();
+  renderConversations();
+  renderTitle();
+  if (selectedId) {
+    renderChatHeader();
+    renderMessages();
+    refreshDetailsSoon(selectedId);
+  }
+}
+
 // who: { title, avatarColor, avatarVersion }; kind: 'direct' | 'group' | 'me'
 function avatar(id, who, size, kind = 'direct') {
   const box = el(
@@ -257,7 +285,10 @@ function avatar(id, who, size, kind = 'direct') {
     }
   };
   fallback();
-  if (who.avatarVersion) {
+  // Your own photo for them beats Signal's (decision F44).
+  const custom = customPhotoVersions[id];
+  const version = custom ? `custom-${custom}` : who.avatarVersion;
+  if (version) {
     // In the DOM from the start so lazy loading can see it; shown over the
     // initials once loaded.
     const img = el('img', 'photo');
@@ -269,7 +300,7 @@ function avatar(id, who, size, kind = 'direct') {
     box.append(img);
     const params = new URLSearchParams({
       conversationId: id,
-      v: who.avatarVersion,
+      v: version,
     });
     img.src = `api/avatar?${params}`;
   }
@@ -3372,6 +3403,25 @@ function photoRows(c, d) {
     select.setAttribute('aria-label', 'Which photo to show');
     actions.append(select);
   }
+  if (c.type !== 'group' && !c.noteToSelf) {
+    const pick = el(
+      'button',
+      'setting-button',
+      customPhotoVersions[c.id] ? 'Change your photo for them' : 'Set your own photo'
+    );
+    pick.type = 'button';
+    pick.title = 'Only you see it. It beats their profile photo and your phone\'s.';
+    pick.addEventListener('click', () => pickCustomPhoto(c.id, pick));
+    actions.append(pick);
+    if (customPhotoVersions[c.id]) {
+      const clear = el('button', 'setting-button', 'Remove your photo');
+      clear.type = 'button';
+      clear.addEventListener('click', () =>
+        changeCustomPhoto(c.id, null, clear)
+      );
+      actions.append(clear);
+    }
+  }
   if (canManageSettings()) {
     const sync = el('button', 'setting-button', 'Import photos from phone');
     sync.type = 'button';
@@ -4456,10 +4506,10 @@ async function saveProfile() {
 }
 
 // As Signal's avatar editor: a centered square, at most 512 pixels.
-async function squarePhoto(file) {
+async function squarePhoto(file, max = 512) {
   const bitmap = await createImageBitmap(file);
   const side = Math.min(bitmap.width, bitmap.height);
-  const out = Math.min(side, 512);
+  const out = Math.min(side, max);
   const canvas = document.createElement('canvas');
   canvas.width = out;
   canvas.height = out;
@@ -4484,6 +4534,51 @@ async function squarePhoto(file) {
       0.9
     )
   );
+}
+
+function pickCustomPhoto(conversationId, button) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    let photo;
+    try {
+      photo = await squarePhoto(file, 640);
+    } catch {
+      toast("That file isn't a picture.");
+      return;
+    }
+    await changeCustomPhoto(conversationId, photo, button);
+  });
+  input.click();
+}
+
+// Your own photo for someone (decision F44). photo: a Blob, or null to remove.
+async function changeCustomPhoto(conversationId, photo, button) {
+  button.disabled = true;
+  try {
+    const res = await fetch(
+      `api/customPhoto?${new URLSearchParams({ conversationId })}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: photo ?? new Blob([]),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error?.code ?? res.status);
+    }
+    setCustomPhotos(data.versions);
+  } catch (error) {
+    toast(`Photo not changed (${error.message}).`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // photo: a Blob, or null to remove it.
@@ -4899,6 +4994,7 @@ $('starred').addEventListener('click', e => {
   }
 });
 loadStarredIds();
+loadCustomPhotos();
 
 // --- contact cards (decision F41) -------------------------------------------
 
@@ -5919,8 +6015,8 @@ function notify(m) {
       body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
       tag: m.conversationId,
       icon:
-        content !== 'count' && c.avatarVersion
-          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: c.avatarVersion })}`
+        content !== 'count' && (customPhotoVersions[c.id] || c.avatarVersion)
+          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: customPhotoVersions[c.id] ? `custom-${customPhotoVersions[c.id]}` : c.avatarVersion })}`
           : 'icon.svg',
     });
     n.addEventListener('click', () => {
@@ -6008,6 +6104,7 @@ function connectEvents() {
     }
     renderBanner();
   });
+  on('customPhotos.changed', ({ versions }) => setCustomPhotos(versions));
   on('conversation.updated', c => {
     conversations.set(c.id, c);
     renderConversations();

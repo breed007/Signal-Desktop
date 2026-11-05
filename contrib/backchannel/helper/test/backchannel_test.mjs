@@ -1370,6 +1370,34 @@ describe('backchannel helper', () => {
     assert.deepEqual(JSON.parse(after.text).ids, []);
   });
 
+  it("serves your own photo for someone over Signal's", async () => {
+    const photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const post = body =>
+      http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/customPhoto?conversationId=${alice.id}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        body,
+      });
+    const set = await post(photo);
+    assert.equal(set.status, 200);
+    const { versions } = JSON.parse(set.text);
+    assert.ok(versions[alice.id]);
+    const listed = await http(port, {
+      path: `/${helper.token}/api/customPhotos`,
+    });
+    assert.deepEqual(JSON.parse(listed.text).versions, versions);
+    const served = await http(port, {
+      path: `/${helper.token}/api/avatar?conversationId=${alice.id}&v=custom-${versions[alice.id]}`,
+    });
+    assert.equal(served.status, 200);
+    assert.equal(served.headers['content-type'], 'image/jpeg');
+    assert.match(served.headers['cache-control'] ?? '', /immutable/);
+    const removed = await post(Buffer.alloc(0));
+    assert.deepEqual(JSON.parse(removed.text).versions, {});
+    assert.equal((await post(Buffer.alloc(3 * 1024 * 1024))).status, 413);
+  });
+
   it('sends a contact card with the phone number, nothing private', async () => {
     const sent = await http(port, {
       method: 'POST',

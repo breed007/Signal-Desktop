@@ -40,6 +40,8 @@ Backchannel does. Each new one is added here when it ships.
   sends each chat its own copy.
 - **Starred messages.** Star any message from its menu and find it again
   in one list, for all chats or one. Kept on your server.
+- **Your own photo for anyone.** Pick a picture for a person in their
+  chat details; it beats their profile photo, only you see it.
 - **Emoticons and double-click.** Typing :) or <3 makes the emoji, and
   double-clicking a message reacts with your first reaction.
 - **Reply privately** to someone in a group: their message is quoted in

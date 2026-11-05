@@ -1071,3 +1071,17 @@ since Signal Desktop has no star and Signal never syncs them.
 
 WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
 parity, we should."
+
+## F44. Fork only: your own photo for anyone
+
+DECISION: as Backchannel Android's "Contact photo", a 1:1 chat's details
+offer "Set your own photo" (and "Remove your photo"). The picture is
+cropped square to at most 640 pixels and kept by the helper in
+custom-photos/ in its config folder (one file per chat, named by a hash of
+the chat id). It beats both their Signal profile photo and your phone's
+contact photo everywhere the page shows them, notifications included, on
+every open page. Only you see it; nothing goes to Signal, which has no such
+field.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."

@@ -130,7 +130,7 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | Double-tap (here double-click) to react           | done      | F43                                                    |
 | Starred messages                                  | done      | F43: kept by the helper                                |
 | One skin tone for every emoji                     | done      | F11                                                    |
-| Your own photo for anyone                         | missing   |                                                        |
+| Your own photo for anyone                         | done      | F44: kept by the helper                                |
 | What's New after an update                        | missing   |                                                        |
 | Immich picker                                     | missing   | Android bc9 not released yet                           |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
