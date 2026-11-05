@@ -18,9 +18,11 @@
 #                        or base64) to sign with; CSC_NAME picks one already
 #                        in the keychain instead. With neither, the app is
 #                        ad-hoc signed: it runs on this Mac but not on others.
-#   APPLE_API_KEY (path to the .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER
-#                        an App Store Connect API key that notarizes the
-#                        signed app (skipped without them)
+#   APPLE_KEYCHAIN_PROFILE
+#                        a notarytool keychain profile that notarizes the
+#                        signed app (release.sh sets it); electron-builder
+#                        also takes APPLE_API_KEY/_ID/_ISSUER or APPLE_ID.
+#                        Notarizing is skipped without any of them.
 
 set -euo pipefail
 

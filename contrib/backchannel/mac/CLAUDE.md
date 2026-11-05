@@ -26,8 +26,8 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
 | `contrib/backchannel/patches/0001-enable-bridge-from-env.patch` | How the container turns the bridge on (`SIGNAL_ENABLE_EXTERNAL_CLIENTS=1`, packaged or not). Unpackaged dev runs honor the variable without it. Patches 0002 to 0004 handle importing a local backup at link time. |
 | `contrib/backchannel/Dockerfile`, `entrypoint.sh` | How the container starts Signal and the helper today. Read them to see the helper's flags. |
 | `ts/backchannel/` | The Backchannel app inside Signal: the build-time switch (`config.main.ts`) and the helper, window and Dock wiring (`app.main.ts`). |
-| `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, `dmg/` (installer art), `homebrew/backchannel.rb` (cask template), BUILD-NOTES.md, RELEASING.md. |
-| `.github/workflows/mac.yml` | Build, smoke-test, sign, notarize, publish (M3). Releases from `backchannel-mac-v*` tags; see RELEASING.md. |
+| `contrib/backchannel/mac/` | Everything Mac-only: `build.sh`, `electron-builder.config.mjs`, `icon/AppIcon.icon`, `dmg/` (installer art), `homebrew/backchannel.rb` (cask template), `release.sh` (signed release on a Mac), `smoke-test.sh`, BUILD-NOTES.md, RELEASING.md. |
+| `.github/workflows/mac.yml` | Unsigned build and smoke test on pushes to `main` and on `backchannel-mac-v*` tags (M3). Releases come from `release.sh`; see RELEASING.md. |
 | `docs/external-client-*.md` | Architecture, threat model, decisions. Read before changing anything security-related. |
 
 ## Rules
@@ -52,8 +52,9 @@ only if Mike wants it): the extras move into Signal Desktop's own UI.
    Releases, or turn it off and rely on Homebrew. Signal Desktop builds
    expire about 90 days after they're built, so every release must come
    from a recent merge.
-6. **No secrets in the repo.** The signing certificate and the App Store
-   Connect API key live only in Actions secrets.
+6. **No secrets in the repo, or on GitHub.** The signing certificate and
+   the notarization credential live only in the releasing Mac's keychain
+   (`release.sh`, RELEASING.md).
 7. **Mike's calls stand.** He owns this fork. If something here conflicts
    with a decision in `docs/external-client-decisions.md` or Mike's README,
    stop and ask instead of choosing.

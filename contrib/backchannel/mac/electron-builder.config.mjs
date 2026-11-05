@@ -49,7 +49,7 @@ export default {
   // Signal's afterSign hook notarizes under Signal's bundle ID from
   // package.json. electron-builder's own notarization (mac.notarize below)
   // takes its place. The universal-DMG hook never matches an arm64 DMG, so
-  // .github/workflows/mac.yml notarizes the DMG itself.
+  // release.sh notarizes the DMG itself.
   afterSign: null,
   afterAllArtifactBuild: null,
   mac: {
@@ -71,8 +71,8 @@ export default {
     // its library validation then refuses the ad-hoc Electron Framework and
     // the app aborts at launch.
     hardenedRuntime: developerId,
-    // Notarizes when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER
-    // (an App Store Connect API key) are set; skipped without them.
+    // Notarizes when a credential is given (release.sh sets
+    // APPLE_KEYCHAIN_PROFILE); skipped without one.
     notarize: true,
     // Never publish to or advertise Signal's update server (rule 5).
     publish: null,

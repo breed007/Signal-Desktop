@@ -359,74 +359,79 @@ The account test isn't done yet. With your phone at hand:
 
 ## M3: signed, notarized, published (2026-11-04)
 
-Result: **unsigned path works; signing not run yet.** No Apple Developer
-account is chosen, so nothing has been signed or notarized. The ad-hoc
-build, the DMG, the ZIP, the smoke test and the cask were checked locally;
-the workflow's own run is noted below. Release steps and secrets are in
-`RELEASING.md`.
+Result: **unsigned path works; the signed path waits for a notarization
+profile.** Signing uses 404 Cybersecurity LLC's Developer ID (team
+`YA83Q8FTH3`), which is in the releasing Mac's keychain. Releases are
+built on that Mac with `release.sh` and hosted on
+`breed007/Signal-Desktop`'s GitHub Releases, so no signing secret goes to
+GitHub. Steps are in `RELEASING.md`.
 
 ### What changed
 
-- `.github/workflows/mac.yml`: builds on `macos-26` from a
-  `backchannel-mac-v*` tag or by hand, smoke-tests the app, signs and
-  notarizes the app and the DMG when the five secrets are set, and on a
-  tag publishes a GitHub Release and pushes the cask to
-  `mikesimone/homebrew-backchannel`. Without secrets it keeps an ad-hoc
-  build as a workflow artifact and publishes nothing.
+- `release.sh`: checks the certificate and the notarytool profile, builds
+  with the Developer ID, notarizes and staples the app, checks it with
+  `stapler`, `spctl` and the smoke test, then signs, notarizes and staples
+  the DMG and writes `release/publish-<version>/` (DMG, ZIP, `SHA256SUMS`,
+  cask, notes). `--publish` tags the commit and creates the release.
+- `smoke-test.sh`: starts the packaged app and expects the helper to
+  answer 404 without the token, 200 with it and 421 for another `Host`.
+  It finds the helper's port (47830, or the next free one up to 47839), so
+  it also works while another helper holds 47830.
+- `.github/workflows/mac.yml`: an unsigned check only. It builds and
+  smoke-tests on `macos-26` for pushes to `main` that touch Backchannel and
+  for `backchannel-mac-v*` tags, and keeps the files 14 days. A first
+  version also signed and published from Actions secrets; it was dropped so
+  the certificate never leaves the releasing Mac (commit `0eb040651` has
+  it, if Mike ever signs with his own account).
 - Signing moved from Signal's hooks to electron-builder's own, in
   `electron-builder.config.mjs`:
   - `mac.sign: null` drops Signal's hook, which hands the app to Signal's
-    signing script. electron-builder signs with `CSC_NAME`/`CSC_LINK` when
-    given and falls back to ad-hoc for arm64 otherwise. `build.sh` sets
-    `CSC_IDENTITY_AUTO_DISCOVERY=false` when neither is set, so a local
-    build never picks up a Developer ID that happens to be in the keychain.
+    signing script. electron-builder signs with `CSC_NAME` when given and
+    falls back to ad-hoc for arm64 otherwise. `build.sh` sets
+    `CSC_IDENTITY_AUTO_DISCOVERY=false` when no identity is given, so a
+    plain build never picks up a Developer ID from the keychain.
   - `afterSign: null` and `mac.notarize: true`: electron-builder notarizes
-    and staples the app when an App Store Connect API key is given
-    (`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`), and logs
-    `skipped macOS notarization` otherwise. A team API key rather than an
-    Apple ID and app-specific password, because the secrets live in Mike's
-    repository and an app-specific password opens the whole Apple ID. Signal's hook would have used Signal's bundle ID.
+    and staples the app with `APPLE_KEYCHAIN_PROFILE`, and logs
+    `skipped macOS notarization` without a credential. Signal's hook would
+    have used Signal's bundle ID.
   - `afterAllArtifactBuild: null`: Signal's hook notarizes only a
-    universal DMG. The workflow signs, notarizes and staples the arm64 DMG
-    itself.
+    universal DMG. `release.sh` notarizes the arm64 DMG.
   - `mac.hardenedRuntime` is on only with a Developer ID. **An ad-hoc
     build with the hardened runtime aborts at launch**: library validation
     rejects the ad-hoc `Electron Framework` ("mapping process and mapped
     file (non-platform) have different Team IDs"). The smoke test caught
     this.
-- Versions: `BACKCHANNEL_VERSION` (from the tag) goes in the file names
+- Versions: `BACKCHANNEL_VERSION` goes in the file names
   (`Backchannel-1.11-mac-arm64.dmg`) and `CFBundleVersion`.
   `CFBundleShortVersionString` stays Signal Desktop's (8.36.0-alpha.1 at
   the time), because Signal's servers and the expiry check read it.
-- DMG: `contrib/backchannel/mac/dmg/background.tiff` (Signal's layout,
-  Backchannel's teal, 1x and 2x) and `icon.icns` (rendered from the app
-  icon). The volume is named "Backchannel Installer".
-- `contrib/backchannel/mac/homebrew/backchannel.rb`: the cask template.
-  Rendered with a real SHA-256, it passes `brew style` and
-  `brew audit --cask --strict` in a scratch tap.
+- DMG: `dmg/background.tiff` (Signal's layout, Backchannel's teal, 1x and
+  2x) and `dmg/icon.icns` (rendered from the app icon). The volume is
+  named "Backchannel Installer".
+- `homebrew/backchannel.rb`: the cask template, downloading from
+  `breed007/Signal-Desktop`'s releases. Rendered with a real SHA-256, it
+  passes `brew style` and `brew audit --cask --strict` in a scratch tap.
 
 ### Expiry
 
 `scripts/get-expire-time.mjs` sets the expiry to 90 days after the
 **commit time** of `HEAD` (`git show -s --format=%ct`), not the build time.
-Rebuilding an old commit gives an app that expires just as soon. The
-workflow prints the date, and the release notes repeat it.
+Rebuilding an old commit gives an app that expires just as soon.
+`release.sh` warns under 60 days, and the release notes give the date.
 
-### Smoke test
+### Checked
 
-The workflow starts `Backchannel.app/Contents/MacOS/Backchannel` with no
-linked account and expects the helper on `127.0.0.1:47830` to answer 404
-without the token, 200 with it, and 421 for another `Host`. Locally:
-`helper up: yes; no token: 404; with token: 200; other Host: 421`.
+- Locally: the unsigned DMG and ZIP; the DMG's background and volume icon;
+  the smoke test, also with 47830 taken (the helper moved to 47831); the
+  cask lint.
+- On `breed007/Signal-Desktop`'s Actions: the unsigned build and smoke test
+  passed on `macos-26` in about 5 minutes.
 
 ### Not done
 
-- Signing uses 404 Cybersecurity LLC's Developer ID (team `YA83Q8FTH3`,
-  chosen 2026-11-04). It needs its five secrets in Mike's repository and a
-  first signed run there.
-- The tap repository `mikesimone/homebrew-backchannel` doesn't exist yet.
-- The front-door README text waits for the first signed release
-  (`RELEASING.md` has it).
-- Tag scheme: `backchannel-mac-v*` keeps Mac releases apart from the
-  Docker image's `backchannel-v*` tags. Using one tag for both is a
-  one-line change to the trigger, if Mike wants it.
+- A signed, notarized build: it needs the `backchannel` notarytool
+  profile on the releasing Mac.
+- A tap: which account hosts `homebrew-backchannel` isn't decided.
+- The front-door README text waits for the first release (`RELEASING.md`
+  has it).
+- The first public release should wait for the real-account test of M2.

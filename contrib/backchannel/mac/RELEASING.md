@@ -1,78 +1,87 @@
 # Releasing Backchannel for Mac
 
-`.github/workflows/mac.yml` builds, signs, notarizes and publishes. This
-page covers the one-time setup and each release.
+Releases are built, signed and notarized on a Mac with `release.sh`, and
+hosted on `breed007/Signal-Desktop`'s GitHub Releases. The signing
+certificate and the notarization credential stay in that Mac's keychain;
+no signing secret lives on GitHub. (Decided 2026-11-04: the certificate is
+404 Cybersecurity LLC's, and keeping it off GitHub keeps it under their
+control.)
 
-## One-time setup
+`.github/workflows/mac.yml` is only a check: it builds an unsigned app,
+starts it and checks the helper, for every push to `main` that touches
+Backchannel and for every release tag.
 
-### Signing secrets
+## One-time setup on the releasing Mac
 
-In this repository's Settings > Secrets and variables > Actions, add all
-five, or none:
+1. **Toolchain.** Node and pnpm as in `BUILD-NOTES.md` (M0), first on
+   `PATH`, and `pnpm install --frozen-lockfile`. Also `gh`, signed in with
+   write access to `breed007/Signal-Desktop`.
+2. **Certificate.** The keychain needs the Developer ID Application
+   certificate with its private key: "Developer ID Application: 404
+   Cybersecurity LLC (YA83Q8FTH3)". `release.sh` picks it by name; set
+   `SIGNING_IDENTITY` to use another.
+3. **Notarization profile.** Store a credential once:
 
-| Secret | What |
-|---|---|
-| `MAC_CERTIFICATE_P12` | The Developer ID Application certificate with its private key, exported from Keychain Access as .p12, then `base64 -i cert.p12 \| pbcopy`. Backchannel uses 404 Cybersecurity LLC's (team `YA83Q8FTH3`). |
-| `MAC_CERTIFICATE_PASSWORD` | The password chosen at export. |
-| `APPLE_API_KEY_P8` | The text of an App Store Connect team API key (`AuthKey_XXXXXXXXXX.p8`) from App Store Connect > Users and Access > Integrations > Team Keys, role Developer. Apple offers the download once. |
-| `APPLE_API_KEY_ID` | That key's ID (the `XXXXXXXXXX`). |
-| `APPLE_API_ISSUER` | The issuer ID shown above the list of team keys. |
+   ```sh
+   xcrun notarytool store-credentials backchannel
+   ```
 
-The API key notarizes in place of an Apple ID and app-specific password:
-it reaches only App Store Connect, not anyone's iCloud, and revoking it
-touches nothing else.
-
-A fork with these secrets gets signed, notarized builds as workflow
-artifacts; only `mikesimone/Signal-Desktop` publishes releases.
-
-Without them the workflow still builds and smoke-tests an ad-hoc signed
-app, keeps it as a workflow artifact for 14 days, and publishes nothing.
-Gatekeeper blocks that build on any Mac that downloads it, unless the
-quarantine flag is removed by hand
-(`xattr -dr com.apple.quarantine Backchannel.app`), so it's for testing
-only.
-
-### Homebrew tap
-
-1. Create the public repository `mikesimone/homebrew-backchannel` with a
-   README, so it has a `main` branch for the cask to land on.
-2. Make a fine-grained token with Contents: read and write on that
-   repository only, and add it here as the secret `HOMEBREW_TAP_TOKEN`.
-
-Without the token, copy `backchannel.rb` from the workflow's artifact to
-`Casks/` by hand after each release.
+   It asks for either an App Store Connect API key (the `.p8` file, its key
+   ID and the issuer ID) or an Apple ID in team `YA83Q8FTH3` with an
+   app-specific password, and keeps it in the keychain under the name
+   `backchannel`. Set `NOTARY_PROFILE` to use another name.
 
 ## Each release
 
-1. Merge the Signal Desktop release you want into `main` and check that the
-   helper tests pass. A build expires 90 days after the commit it's built
-   from, so rebuilding an old commit doesn't buy time.
-2. Tag and push:
+1. Merge the Signal Desktop release you want into `main`. A build expires
+   90 days after the commit it's built from, so rebuilding an old commit
+   doesn't buy time; `release.sh` warns when fewer than 60 days are left.
+2. Check out that commit with a clean tree, quit Backchannel, and build:
 
    ```sh
-   git tag backchannel-mac-v1.11
-   git push origin backchannel-mac-v1.11
+   contrib/backchannel/mac/release.sh 1.11
    ```
 
-3. The workflow builds on `macos-26`, starts the app and checks that the
-   helper serves the page, notarizes the app and the DMG, and publishes the
-   release with the DMG, the ZIP and `SHA256SUMS`. The tap job then pushes
-   the cask.
-4. Check the release on a Mac that never ran a dev build:
-   `brew install --cask mikesimone/backchannel/backchannel`, open it, link
-   it, approve the page.
+   It checks the certificate and the profile first, then:
+   - builds with the Developer ID and the hardened runtime, and notarizes
+     and staples the app;
+   - checks it with `stapler` and `spctl`, starts it and checks that the
+     helper serves the page (`smoke-test.sh`);
+   - signs, notarizes and staples the DMG, and checks it with `spctl`;
+   - writes `release/publish-1.11/`: the DMG, the ZIP, `SHA256SUMS`, the
+     cask with the DMG's SHA-256, and the release notes.
+3. Try the DMG from `release/publish-1.11/` if anything changed in the
+   build or the app.
+4. Publish:
+
+   ```sh
+   contrib/backchannel/mac/release.sh 1.11 --publish
+   ```
+
+   This uses the build from step 2 when it came from the same commit (and
+   builds again otherwise), tags the commit `backchannel-mac-v1.11`, pushes
+   the tag to `origin` and creates the release with the DMG, the ZIP and
+   `SHA256SUMS`. The tag also runs the unsigned check in Actions.
+5. Copy `release/publish-1.11/backchannel.rb` to the tap's `Casks/`
+   folder, once there is a tap.
 
 The release number goes in the file names and the build number
 (`CFBundleVersion`). The app's own version stays Signal Desktop's, because
 Signal's servers and the expiry check read it.
 
-To try the workflow without releasing, run it from the Actions tab
-(workflow_dispatch) with any version; it never publishes.
+## Homebrew tap
+
+The cask template is `homebrew/backchannel.rb`; its download URL points at
+`breed007/Signal-Desktop`'s releases. A tap is a public repository named
+`homebrew-<name>` with the cask in `Casks/`. Which account hosts it isn't
+decided yet; the install command follows from it, for example
+`brew install --cask breed007/backchannel/backchannel` for
+`breed007/homebrew-backchannel`.
 
 ## For the front-door README
 
-Once the first signed release is out, this goes in `mikesimone/backchannel`'s
-README, after Quick start:
+Once the first release is out, this goes in `mikesimone/backchannel`'s
+README, after Quick start. Add the Homebrew line once the tap exists.
 
 ````markdown
 ## On a Mac
@@ -80,12 +89,8 @@ README, after Quick start:
 Backchannel for Mac is Signal Desktop with the page built in: no server,
 no Docker. It needs an Apple Silicon Mac with macOS 14 or later.
 
-```sh
-brew install --cask mikesimone/backchannel/backchannel
-```
-
-Or download the DMG from the
-[releases](https://github.com/mikesimone/Signal-Desktop/releases) and drag
+Download the DMG from the
+[releases](https://github.com/breed007/Signal-Desktop/releases) and drag
 Backchannel to Applications.
 
 Open it and link it to your phone like Signal Desktop (Settings > Linked
@@ -93,6 +98,6 @@ devices > Link new device). Signal then asks whether to allow
 "Backchannel": allow it, and the page opens in Backchannel's own window.
 It keeps its data apart from Signal Desktop, so both can run at once.
 
-Update with `brew upgrade --cask backchannel`, at least every couple of
-months: each build stops working 90 days after it's made.
+Install a newer release at least every couple of months: each build stops
+working 90 days after it's made.
 ````
