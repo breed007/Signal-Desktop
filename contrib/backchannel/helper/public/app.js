@@ -3235,6 +3235,10 @@ function renderDetails(c, d) {
     body.replaceChildren(groupEditForm(c, d));
     return;
   }
+  if (d?.type === 'direct' && detailsEditing) {
+    body.replaceChildren(nicknameForm(c, d));
+    return;
+  }
   const scroll = body.scrollTop;
   const head = el('div', 'details-head');
   head.append(
@@ -3288,6 +3292,24 @@ function renderDetails(c, d) {
     }
     if (d.note) {
       rows.push(detailRow('note', d.note, 'Note'));
+    }
+    if (canManageChats() && !c.noteToSelf) {
+      // Signal's "Nickname" (decision F46): your own name for them, synced
+      // to your phone, with your own photo (F44) the web's way to link
+      // someone to a contact.
+      const actions = el('div', 'details-actions');
+      const edit = el(
+        'button',
+        'setting-button',
+        d.nickname || d.note ? 'Edit nickname and note' : 'Add nickname'
+      );
+      edit.type = 'button';
+      edit.addEventListener('click', () => {
+        detailsEditing = true;
+        renderDetails(c, d);
+      });
+      actions.append(edit);
+      rows.push(actions);
     }
     rows.push(...photoRows(c, d));
   } else {
@@ -3950,6 +3972,76 @@ function groupEditForm(c, d) {
   foot.append(count, cancel, save);
   form.append(photoRow, name, description, foot);
   setTimeout(() => name.focus());
+  return form;
+}
+
+// As Signal's EditNicknameAndNoteModal: first and last name, 26 characters
+// each, and a note of 240. Only you see them; they sync to your devices.
+function nicknameForm(c, d) {
+  const form = el('form', 'group-edit');
+  const field = (placeholder, value, max) => {
+    const input = el('input', 'setting-input');
+    input.type = 'text';
+    input.placeholder = placeholder;
+    input.value = value ?? '';
+    input.dataset.max = String(max);
+    return input;
+  };
+  const given = field('First name', d.nicknameGivenName, 26);
+  const family = field('Last name', d.nicknameFamilyName, 26);
+  const note = el('textarea', 'setting-input');
+  note.placeholder = 'Note';
+  note.rows = 3;
+  note.value = d.note ?? '';
+  note.dataset.max = '240';
+  const hint = el(
+    'p',
+    'setting-note',
+    'Only you see a nickname and note. They replace the name Signal shows for this person on all your devices.'
+  );
+  const save = el('button', 'setting-button primary', 'Save');
+  save.type = 'submit';
+  const cancel = el('button', 'setting-button', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => {
+    detailsEditing = false;
+    renderDetails(c, d);
+  });
+  const fields = [given, family, note];
+  const length = value => [...segmenter.segment(value.trim())].length;
+  const update = () => {
+    save.disabled = fields.some(f => length(f.value) > Number(f.dataset.max));
+  };
+  fields.forEach(f => f.addEventListener('input', update));
+  update();
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (save.disabled) {
+      return;
+    }
+    save.disabled = true;
+    try {
+      await api('api/conversation', {
+        conversationId: c.id,
+        change: {
+          action: 'nickname',
+          givenName: given.value.trim(),
+          familyName: family.value.trim(),
+          note: note.value.trim(),
+        },
+      });
+    } catch (error) {
+      toast(`Not saved (${error.code ?? error.message}).`);
+      update();
+      return;
+    }
+    detailsEditing = false;
+    openDetails(c.id, { refresh: true });
+  });
+  const foot = el('div', 'details-actions');
+  foot.append(cancel, save);
+  form.append(given, family, note, hint, foot);
+  setTimeout(() => given.focus());
   return form;
 }
 
@@ -5004,6 +5096,8 @@ const WHATS_NEW = [
   [
     '2026-11-05',
     [
+      'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
+      'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
       'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',
       'Your own photo for anyone: pick one in a chat\'s details. Only you see it, and it beats their profile photo.',
       'Starred messages: star any message from its ⋯ menu, then find them all from the ★ above the chat list.',

@@ -1099,3 +1099,23 @@ people will notice.
 WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
 parity, we should." Android shows all of its what's-new for the next few
 releases (Mike, 2026-11-03).
+
+## F46. Fork only: nickname and note, the web's "link to a contact"
+
+DECISION: a 1:1 chat's details offer Signal's "Nickname" dialog: first and
+last name (26 characters each) and a note (240), through
+`conversations.update` action `nickname` (no new Allow). It calls Signal's
+own updateNicknameAndNote, so it syncs to the phone and other devices and
+replaces the name Signal shows. With your own photo for them (F44), that is
+the web's version of Backchannel Android's "Link to phone contact": a
+linked Signal never sees phone contacts that didn't match a Signal user (a
+hidden number is exactly that case), so the web can't list them to pick
+from.
+
+Backchannel Android's hand-linked contacts and contact photos now ride
+Signal's contact sync (backchannel-android 3e03b26), so a link made on the
+phone shows on the web as a phone contact's name and photo do.
+
+WHY: Mike (2026-11-05): "Would be cool if it would sync the 'Link to
+contact manually' from the phone," and "I was looking to have Backchannel
+Web do that, as well."

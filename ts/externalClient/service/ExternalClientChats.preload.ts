@@ -94,6 +94,32 @@ export function updateConversation({
         });
         drop(DataWriter.updateConversation(model.attributes));
         break;
+      // Fork addition (decision F46): as Signal's EditNicknameAndNoteModal.
+      case 'nickname': {
+        if (model.get('type') !== 'private') {
+          return { ok: false, code: ErrorCode.InvalidArgument };
+        }
+        const clean = (value: string) => value.trim() || null;
+        const givenName = clean(change.givenName);
+        const familyName = clean(change.familyName);
+        const bytes = (value: string) =>
+          new TextEncoder().encode(value.trim()).length;
+        if (
+          bytes(change.givenName) > 128 ||
+          bytes(change.familyName) > 128 ||
+          bytes(change.note) > 240
+        ) {
+          return { ok: false, code: ErrorCode.InvalidArgument };
+        }
+        actions.updateNicknameAndNote(conversationId, {
+          nickname:
+            givenName == null && familyName == null
+              ? null
+              : { givenName, familyName },
+          note: clean(change.note),
+        });
+        break;
+      }
       default:
         return { ok: false, code: ErrorCode.InvalidArgument };
     }

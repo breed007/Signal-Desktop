@@ -58,7 +58,7 @@ Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 | Chat header: details, members, safety number             | partial   | F16: details and members; safety number missing      |
 | Contact card from a group member's photo or name         | done      | F23: About and Message                               |
 | Reply privately to a group message                       | different | F23: beyond Signal; links both ways on this page     |
-| Per-chat settings: timer, mute, block, colors, nickname  | partial   | F15: timer, mute, block; colors and nickname missing |
+| Per-chat settings: timer, mute, block, colors, nickname  | partial   | F15, F46: timer, mute, block, nickname; colors missing |
 | Media, files, audio and links gallery                    | done      | F31: viewer steps within one message                 |
 | Search inside a chat                                     | done      | F17                                                  |
 | Group management (add/remove, admins, link, name, photo) | done      | F21: also requests, invites, permissions, leave      |
@@ -134,5 +134,5 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | What's New after an update                        | done      | F45: all entries since the start, new ones marked      |
 | Immich picker                                     | missing   | Android bc9 not released yet                           |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
-| Link someone to a phone contact                   | different | Desktop has no phone contacts; F36/F37 use the synced ones |
+| Link someone to a phone contact                   | different | F46: phone links sync over; on the web, nickname + own photo |
 | Notifications, screenshots, passphrase, push, icon, Photo apps, Open links | different | phone-only |

@@ -156,6 +156,8 @@ export function getDetails({
     title: conversation.title,
     profileName: isGroup ? null : text(conversation.profileName),
     nickname: isGroup ? null : text(nickname),
+    nicknameGivenName: isGroup ? null : text(conversation.nicknameGivenName),
+    nicknameFamilyName: isGroup ? null : text(conversation.nicknameFamilyName),
     note: isGroup ? null : text(conversation.note),
     about: isGroup ? null : text(conversation.about),
     phoneNumber:
