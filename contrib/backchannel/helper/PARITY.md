@@ -111,7 +111,7 @@ Last reviewed: 2026-11-02, against Signal 8.36.0-alpha.1 in fork main.
 | Notifications with Signal's content and sound settings | done    | F11                       |
 | Keyboard shortcuts (Signal's list)                     | partial | formatting, Escape, Enter |
 | Reconnects by itself                                   | done    |                           |
-| Release notes / what's new                             | missing |                           |
+| Release notes / what's new                             | done    | F45                       |
 
 ## Backchannel Android
 
@@ -131,7 +131,7 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | Starred messages                                  | done      | F43: kept by the helper                                |
 | One skin tone for every emoji                     | done      | F11                                                    |
 | Your own photo for anyone                         | done      | F44: kept by the helper                                |
-| What's New after an update                        | missing   |                                                        |
+| What's New after an update                        | done      | F45: all entries since the start, new ones marked      |
 | Immich picker                                     | missing   | Android bc9 not released yet                           |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
 | Link someone to a phone contact                   | different | Desktop has no phone contacts; F36/F37 use the synced ones |

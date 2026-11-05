@@ -4996,6 +4996,138 @@ $('starred').addEventListener('click', e => {
 loadStarredIds();
 loadCustomPhotos();
 
+// --- What's New (decision F45) ---------------------------------------------
+
+// Newest first. As Backchannel Android for now: every entry since the
+// beginning shows, and the ones since your last look are marked New.
+const WHATS_NEW = [
+  [
+    '2026-11-05',
+    [
+      'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',
+      'Your own photo for anyone: pick one in a chat\'s details. Only you see it, and it beats their profile photo.',
+      'Starred messages: star any message from its ⋯ menu, then find them all from the ★ above the chat list.',
+      'Typing :) or <3 makes the emoji. Backspace right after takes it back.',
+      'Double-click a message to react with your first reaction.',
+    ],
+  ],
+  [
+    '2026-11-03',
+    [
+      'Full markdown when you type or paste: * bullets, numbered lists, # headings, > quotes and code.',
+      'Shift+Enter continues a list. List lines keep their indent in bubbles.',
+    ],
+  ],
+  [
+    '2026-11-02',
+    [
+      'Messages go out even when someone\'s safety number changed.',
+      'Contact cards: see them and send your contacts.',
+    ],
+  ],
+  [
+    '2026-10-30',
+    ['GIFs play in the chat.', 'Forwarding works again after Signal 8.36.'],
+  ],
+  [
+    '2026-10-26',
+    ['Block and unblock people from Settings.', 'See an edited message\'s history.'],
+  ],
+  [
+    '2026-10-19',
+    [
+      'Chat folders, and an unread filter in search.',
+      '"Safety number changed" notices.',
+      'Contact photos from your phone, kept fresh.',
+    ],
+  ],
+  [
+    '2026-10-14',
+    [
+      'All media for a chat.',
+      'Edit and @mention when forwarding, to any number of chats.',
+      'Markdown shortcuts, and styled copy and paste.',
+    ],
+  ],
+  [
+    '2026-10-13',
+    [
+      'Typing indicators, the unread line, and search.',
+      'Signal\'s chat menu, chat details and group management.',
+      'Voice notes, new chats and new groups.',
+      'Reply privately to someone in a group.',
+      'Link previews, sticker replies and scheduled messages.',
+      'Step through a message\'s photos.',
+    ],
+  ],
+  [
+    '2026-10-12',
+    [
+      'Text formatting, stickers and delivery ticks.',
+      'Settings, your profile, the blocked list and emoji skin tone.',
+    ],
+  ],
+  [
+    '2026-10-10',
+    [
+      'Photos, reactions, replies, edits and deletes.',
+      'Send files, forward without limits, polls, @mentions and the full emoji picker.',
+    ],
+  ],
+];
+const WHATS_NEW_KEY = 'whatsNewSeen';
+
+function whatsNewSeen() {
+  try {
+    return localStorage.getItem(WHATS_NEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function openWhatsNew() {
+  closePopovers();
+  const seen = whatsNewSeen() ?? '';
+  const day = new Intl.DateTimeFormat(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  $('whats-new-list').replaceChildren(
+    ...WHATS_NEW.flatMap(([date, items]) => {
+      const head = el('div', 'whats-new-day', day.format(new Date(date)));
+      if (seen && date > seen) {
+        head.append(el('span', 'new-badge', 'New'));
+      }
+      const list = el('ul');
+      list.append(...items.map(text => el('li', null, text)));
+      return [head, list];
+    })
+  );
+  $('whats-new').hidden = false;
+  try {
+    localStorage.setItem(WHATS_NEW_KEY, WHATS_NEW[0][0]);
+  } catch {
+    // It shows again next time.
+  }
+}
+
+function closeWhatsNew() {
+  $('whats-new').hidden = true;
+}
+
+$('whats-new-close').append(icon('close'));
+$('whats-new-close').addEventListener('click', closeWhatsNew);
+$('whats-new').addEventListener('click', e => {
+  if (e.target === $('whats-new')) {
+    closeWhatsNew();
+  }
+});
+if (whatsNewSeen() !== WHATS_NEW[0][0]) {
+  openWhatsNew();
+}
+
 // --- contact cards (decision F41) -------------------------------------------
 
 // A shared contact, as Signal's bubble shows it, with the numbers, emails
@@ -5290,6 +5422,16 @@ function settingsSections() {
           ],
           setPageTheme
         )
+      ),
+      settingRow(
+        "What's new",
+        'Everything added to Backchannel, newest first.',
+        (() => {
+          const open = el('button', 'setting-button', 'Show');
+          open.type = 'button';
+          open.addEventListener('click', openWhatsNew);
+          return open;
+        })()
       ),
     ],
   });
@@ -9706,6 +9848,8 @@ document.addEventListener('keydown', e => {
       closeScheduledList();
     } else if (!$('contact-chooser').hidden) {
       closeContactChooser();
+    } else if (!$('whats-new').hidden) {
+      closeWhatsNew();
     } else if (!$('starred').hidden) {
       closeStarred();
     } else if (!$('block-chooser').hidden) {

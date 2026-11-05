@@ -1085,3 +1085,17 @@ field.
 
 WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
 parity, we should."
+
+## F45. Fork only: What's New after an update
+
+DECISION: as Backchannel Android, the page opens a "What's new" list when
+it has entries you haven't seen (and on a first visit). For now every entry
+since the beginning shows, newest first, and days since your last look are
+marked New. The last-seen day is kept in the browser (localStorage), so each
+browser shows it once. Settings, Appearance, "What's new" reopens it. The
+list lives in app.js (WHATS_NEW); add a day at the top with each change
+people will notice.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should." Android shows all of its what's-new for the next few
+releases (Mike, 2026-11-03).
