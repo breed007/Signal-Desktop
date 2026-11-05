@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { v4 as generateGuid } from 'uuid';
 
 import type { AudioDeviceList } from '@signalapp/ringrtc';
 import type { MutableRefObject, JSX } from 'react';
@@ -153,6 +154,7 @@ import {
 import type { SmartPreferencesChatFoldersPageProps } from './PreferencesChatFoldersPage.preload.tsx';
 import type { SmartPreferencesEditChatFolderPageProps } from './PreferencesEditChatFolderPage.preload.tsx';
 import type { ExternalProps as SmartNotificationProfilesProps } from './PreferencesNotificationProfiles.preload.tsx';
+import { registrationJobQueue } from '../../jobs/registrationJobQueue.preload.ts';
 
 const RESETTABLE_GLOBAL_NOTIFICATION_ITEMS = [
   ...Object.values(NOTIFY_WHILE_MUTED_FIELDS),
@@ -756,6 +758,15 @@ export function SmartPreferences(): JSX.Element | null {
       const account = window.ConversationController.getOurConversationOrThrow();
       account.captureChange('sealedSenderIndicators');
     });
+  const [hasAllowSealedSenderFromAnyone, onAllowSealedSenderFromAnyoneChange] =
+    createItemsAccess('allowSealedSenderFromAnyone', false, () => {
+      drop(
+        registrationJobQueue.add({
+          type: 'UpdateAccountAttributes',
+          id: generateGuid(),
+        })
+      );
+    });
 
   const [autoDownloadAttachment, onAutoDownloadAttachmentChange] =
     createItemsAccess(
@@ -1118,6 +1129,7 @@ export function SmartPreferences(): JSX.Element | null {
         getMessageSampleForSchemaVersion={
           DataReader.getMessageSampleForSchemaVersion
         }
+        hasAllowSealedSenderFromAnyone={hasAllowSealedSenderFromAnyone}
         hasAnyCurrentCustomChatFolders={hasAnyCurrentCustomChatFolders}
         hasAudioNotifications={hasAudioNotifications}
         hasAutoConvertEmoji={hasAutoConvertEmoji}
@@ -1182,6 +1194,9 @@ export function SmartPreferences(): JSX.Element | null {
         navTabsCollapsed={navTabsCollapsed}
         notificationContent={notificationContent}
         notifyWhileMuted={notifyWhileMuted}
+        onAllowSealedSenderFromAnyoneChange={
+          onAllowSealedSenderFromAnyoneChange
+        }
         onAudioNotificationsChange={onAudioNotificationsChange}
         onAutoConvertEmojiChange={onAutoConvertEmojiChange}
         onAutoDownloadAttachmentChange={onAutoDownloadAttachmentChange}

@@ -47,7 +47,7 @@ import { SizeObserver } from '../hooks/useSizeObserver.dom.tsx';
 import { Slider } from './Slider.dom.tsx';
 import { Theme } from '../util/theme.std.ts';
 import { ThemeType } from '../types/Util.std.ts';
-import { canvasToBytes } from '../util/canvasToBytes.std.ts';
+import { canvasToBytes } from '../util/canvasToBytes.dom.ts';
 import { loadImage } from '../util/loadImage.std.ts';
 import { useConfirmDiscard } from '../hooks/useConfirmDiscard.dom.tsx';
 import { useFabricHistory } from '../mediaEditor/useFabricHistory.dom.ts';
@@ -68,6 +68,7 @@ import type { FunTimeStickerStyle } from './fun/constants.dom.tsx';
 import * as Errors from '../types/errors.std.ts';
 import { AxoTheme } from '../axo/AxoTheme.dom.tsx';
 import { AxoDropdownMenu } from '../axo/AxoDropdownMenu.dom.tsx';
+import type { StickerReferenceType } from '../types/Stickers.preload.ts';
 
 const { get, has, noop } = lodash;
 
@@ -92,6 +93,10 @@ export type PropsType = {
   imageToBlurHash: typeof imageToBlurHash;
   onClose: () => unknown;
   onDone: (result: MediaEditorResultType) => unknown;
+  onMarkStickerAsFavorite: (
+    stickerRef: StickerReferenceType,
+    markAsFavorite: boolean
+  ) => void;
   convertDraftBodyRangesIntoHydrated: (
     bodyRanges: DraftBodyRanges | undefined
   ) => HydratedBodyRangesType | undefined;
@@ -172,6 +177,7 @@ export function MediaEditor({
   isFormattingEnabled,
   emojiSkinToneDefault,
   onSelectEmoji,
+  onMarkStickerAsFavorite,
   onTextTooLong,
   ourConversationId,
   platform,
@@ -314,6 +320,19 @@ export function MediaEditor({
       );
     },
     [handlePickSticker]
+  );
+
+  const handleMarkStickerAsFavorite = useCallback(
+    (stickerSelection: FunStickerSelection, markAsFavorite: boolean) => {
+      onMarkStickerAsFavorite(
+        {
+          packId: stickerSelection.stickerPackId,
+          stickerId: stickerSelection.stickerId,
+        },
+        markAsFavorite
+      );
+    },
+    [onMarkStickerAsFavorite]
   );
 
   const [cropPreset, setCropPreset] = useState<CropPreset>(CropPreset.Freeform);
@@ -1489,6 +1508,7 @@ export function MediaEditor({
                   onSelectSticker={handleSelectSticker}
                   showTimeStickers
                   onSelectTimeSticker={handlePickTimeSticker}
+                  onMarkStickerAsFavorite={handleMarkStickerAsFavorite}
                   placement="top"
                   theme={pickerTheme}
                 >

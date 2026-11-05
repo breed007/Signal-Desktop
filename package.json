@@ -6,7 +6,7 @@
   "description": "Private messaging from your desktop",
   "desktopName": "signal.desktop",
   "repository": "https://github.com/signalapp/Signal-Desktop.git",
-  "version": "8.36.0-alpha.1",
+  "version": "8.37.0-alpha.1",
   "license": "AGPL-3.0-only",
   "author": {
     "name": "Signal Messenger, LLC",
@@ -43,7 +43,7 @@
     "prepare-no-delay-release": "node scripts/prepare-no-delay-release.mjs",
     "prepare-linux-build": "node scripts/prepare_linux_build.mjs",
     "prepare-mas-build": "node scripts/prepare_mas_build.mjs",
-    "test": "run-s test-node test-electron test-lint-intl test-oxlint",
+    "test": "run-s test-node test:axo test-electron test-lint-intl test-oxlint",
     "test-electron": "node scripts/test-electron.mjs",
     "test-release": "node scripts/test-release.mjs",
     "test-node": "cross-env NODE_ENV=test NODE_OPTIONS='--import=tsx' LANG=en-us electron-mocha --timeout 10000  --extension ts,tsx,js,mjs --file ts/test-node/setup.preload.ts --recursive ts/test-node scripts/**/*_test.mjs",
@@ -51,6 +51,12 @@
     "test-mock-docker": "mocha --require ts/test-mock/setup-ci.node.ts ts/test-mock/**/*_test.docker.node.ts",
     "test-oxlint": "mocha --require .oxlint/test-setup.mjs .oxlint/rules/**/*.test.mjs",
     "test-lint-intl": "tsx ./build/intl-linter/linter.node.ts --test",
+    "test:axo": "vitest run --project axo-node --project axo-browser",
+    "test:axo:watch": "vitest --project axo-node --project axo-browser",
+    "test:axo:ui": "vitest --ui --browser.traceView --project axo-node --project axo-browser",
+    "test:axo:visual": "vitest run --project axo-visual",
+    "test:axo:bench": "vitest bench --run --reporter=default --project axo-browser",
+    "test:axo:coverage": "vitest run --coverage --project axo-node --project axo-browser",
     "oxlint": "oxlint --format=stylish",
     "oxlint:ci": "oxlint --format=github",
     "lint": "run-p --aggregate-output --print-label lint-prettier lint-css check:types oxlint lint-knip",
@@ -123,9 +129,10 @@
   "dependencies": {
     "@indutny/mac-screen-share": "1.2.5",
     "@indutny/simple-windows-notifications": "2.0.21",
+    "@signalapp/clonefile": "workspace:*",
     "@signalapp/libsignal-client": "0.106.0",
     "@signalapp/mute-state-change": "workspace:*",
-    "@signalapp/ringrtc": "2.73.0",
+    "@signalapp/ringrtc": "2.74.0",
     "@signalapp/sqlcipher": "4.1.0",
     "@signalapp/types": "workspace:*",
     "@signalapp/windows-local-pipe": "workspace:*",
@@ -181,6 +188,7 @@
     "@storybook/types": "8.6.14",
     "@tailwindcss/cli": "4.3.0",
     "@tailwindcss/postcss": "4.3.0",
+    "@tailwindcss/vite": "4.3.0",
     "@tanstack/react-virtual": "3.13.23",
     "@types/audioworklet": "0.0.100",
     "@types/babel__core": "7.20.5",
@@ -218,8 +226,13 @@
     "@typescript-eslint/rule-tester": "8.59.3",
     "@typescript-eslint/utils": "8.59.3",
     "@typescript/native": "npm:typescript@7.0.2",
+    "@vitest/browser-playwright": "5.0.5",
+    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/ui": "5.0.5",
+    "axe-core": "4.14.0",
     "babel-plugin-lodash": "3.3.4",
     "better-blockmap": "2.0.1",
+    "binary-search": "1.3.6",
     "blob-util": "2.0.2",
     "blueimp-load-image": "5.16.0",
     "blurhash": "2.0.5",
@@ -243,7 +256,7 @@
     "debug": "4.4.3",
     "direction": "2.0.1",
     "dom-accessibility-api": "0.7.1",
-    "electron": "45.0.0",
+    "electron": "45.2.1",
     "electron-builder": "26.11.1",
     "electron-mocha": "13.1.0",
     "emoji-regex-xs": "2.0.1",
@@ -273,7 +286,7 @@
     "lodash": "4.18.1",
     "log-symbols": "7.0.1",
     "lru-cache": "11.2.7",
-    "mediabunny": "1.61.3",
+    "mediabunny": "1.65.0",
     "memoizee": "0.4.17",
     "micromatch": "4.0.8",
     "mocha": "11.7.5",
@@ -344,18 +357,21 @@
     "unicode-number": "1.1.0",
     "url": "0.11.4",
     "uuid": "13.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5",
+    "vitest-browser-react": "2.3.0",
     "wait-on": "9.0.5",
     "webpack": "5.111.1",
     "write-file-atomic": "7.0.1",
     "zod": "4.6.6"
   },
   "engines": {
-    "node": "24.22.0"
+    "node": "24.22.1"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "24.22.0"
+      "version": "24.22.1"
     },
     "packageManager": {
       "name": "pnpm",
@@ -364,7 +380,6 @@
   },
   "build": {
     "appId": "org.whispersystems.signal-desktop",
-    "nativeRebuilder": "parallel",
     "mac": {
       "artifactName": "${name}-mac-${arch}-${version}.${ext}",
       "category": "public.app-category.social-networking",
@@ -639,6 +654,7 @@
       "node_modules/@signalapp/windows-ucv/build/Release/*.node",
       "node_modules/@signalapp/windows-local-pipe/build/Release/*.node",
       "node_modules/@signalapp/mute-state-change/build/Release/*.node",
+      "node_modules/@signalapp/clonefile/build/Release/*.node",
       "node_modules/@indutny/simple-windows-notifications/prebuilds/${platform}-${arch}/*.node",
       "node_modules/@indutny/mac-screen-share/prebuilds/${platform}-${arch}/*.node",
       "node_modules/fs-xattr/build/Release/*.node",
@@ -647,6 +663,6 @@
     ]
   },
   "volta": {
-    "node": "24.22.0"
+    "node": "24.22.1"
   }
 }
