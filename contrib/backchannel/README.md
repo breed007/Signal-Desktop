@@ -49,7 +49,7 @@ Backchannel does. Each new one is added here when it ships.
   server.
 - **Reply to one photo of an album.** Signal can only quote the whole
   message; Backchannel's photo viewer sends your comment with
-  that one photo.
+  that one photo, plus any photos, GIFs, files or sticker you add.
 - **Your own photo for anyone.** Pick a picture for a person in their
   chat details; it beats their profile photo, only you see it.
 - **Emoticons and double-click.** Typing :) or <3 makes the emoji, and

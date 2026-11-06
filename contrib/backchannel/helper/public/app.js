@@ -165,7 +165,8 @@ const ICONS = {
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
   poll: 'M5 20V11M12 20V4M19 20v-6',
   star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
-  contact: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
+  contact:
+    'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
   back: 'M15 5l-7 7 7 7',
@@ -254,7 +255,8 @@ async function loadCustomPhotos() {
 
 function setCustomPhotos(versions) {
   const before = JSON.stringify(customPhotoVersions);
-  customPhotoVersions = versions && typeof versions === 'object' ? versions : {};
+  customPhotoVersions =
+    versions && typeof versions === 'object' ? versions : {};
   if (JSON.stringify(customPhotoVersions) === before) {
     return;
   }
@@ -2060,7 +2062,11 @@ function stepLightbox(delta) {
 // Reply to one photo of an album (decision F47), as Backchannel Android
 // bc9: a new message quoting the original, carrying that photo again (a
 // quote alone shows the album's first photo on phones), with a comment as
-// its text. No emoji row (Mike, 2026-11-06).
+// its text. No emoji row (Mike, 2026-11-06). Like any reply it can also
+// carry photos, GIFs and files of your own (they go after the photo, in the
+// same message), or a sticker (decision F53).
+let photoReplyFiles = [];
+
 function openPhotoReply() {
   const form = $('lightbox-reply-form');
   if (!form.hidden) {
@@ -2069,38 +2075,111 @@ function openPhotoReply() {
   }
   form.hidden = false;
   $('lightbox-reply-text').value = '';
+  setPhotoReplyFiles([]);
   $('lightbox-reply-text').focus();
 }
 
 function closePhotoReply() {
   $('lightbox-reply-form').hidden = true;
+  setPhotoReplyFiles([]);
 }
 
-async function sendPhotoReply(text) {
-  if (!lightbox || !text.trim()) {
-    return;
+function addPhotoReplyFiles(fileList) {
+  const list = [...photoReplyFiles];
+  for (const file of fileList) {
+    // The photo you're replying to takes one place.
+    if (list.length >= MAX_DRAFTS - 1) {
+      toast(`Up to ${MAX_DRAFTS - 1} at a time.`);
+      break;
+    }
+    list.push({
+      file,
+      url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+    });
   }
+  setPhotoReplyFiles(list);
+  $('lightbox-reply-text').focus();
+}
+
+function setPhotoReplyFiles(list) {
+  for (const old of photoReplyFiles) {
+    if (old.url && !list.includes(old)) {
+      URL.revokeObjectURL(old.url);
+    }
+  }
+  photoReplyFiles = list;
+  const box = $('lightbox-reply-extras');
+  box.hidden = list.length === 0;
+  box.replaceChildren(
+    ...list.map(draft => {
+      const chip = el('div', 'lightbox-reply-extra');
+      if (draft.url) {
+        const img = el('img');
+        img.src = draft.url;
+        img.alt = draft.file.name;
+        chip.append(img);
+      } else {
+        chip.append(el('span', 'lightbox-reply-extra-name', draft.file.name));
+      }
+      const remove = el('button', 'lightbox-reply-extra-remove', '×');
+      remove.type = 'button';
+      remove.title = 'Remove';
+      remove.setAttribute('aria-label', `Remove ${draft.file.name}`);
+      remove.addEventListener('click', () =>
+        setPhotoReplyFiles(photoReplyFiles.filter(d => d !== draft))
+      );
+      chip.append(remove);
+      return chip;
+    })
+  );
+}
+
+// Sends the photo with the comment and any added files, quoting the
+// original. Returns the sent message, or null.
+async function sendPhotoReplyMessage(text) {
   const { m, items, pos } = lightbox;
   const index = items[pos];
   const a = m.attachments[index];
+  const res = await fetch(attachmentUrl(m, index, a));
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const photo = new File([blob], a.fileName ?? 'photo', {
+    type: a.contentType || blob.type,
+  });
+  const attachmentUploadIds = [];
+  for (const file of [photo, ...photoReplyFiles.map(d => d.file)]) {
+    // oxlint-disable-next-line no-await-in-loop
+    attachmentUploadIds.push(await uploadFile(file));
+  }
+  const { message } = await api('api/send', {
+    conversationId: m.conversationId,
+    body: text.trim(),
+    attachmentUploadIds,
+    quoteMessageId: m.id,
+  });
+  return message ?? null;
+}
+
+async function sendPhotoReply(text, sticker = null) {
+  if (!lightbox || (!text.trim() && photoReplyFiles.length === 0 && !sticker)) {
+    return;
+  }
   const form = $('lightbox-reply-form');
   form.classList.add('busy');
   try {
-    const res = await fetch(attachmentUrl(m, index, a));
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    const sent = await sendPhotoReplyMessage(text);
+    // A sticker can't carry the photo, so it follows as a reply to the
+    // message that does: phones then show the right photo in its quote.
+    if (sticker) {
+      await api('api/sendSticker', {
+        conversationId: lightbox?.m.conversationId ?? sent?.conversationId,
+        packId: sticker.packId,
+        stickerId: sticker.stickerId,
+        ...(sent?.id ? { quoteMessageId: sent.id } : {}),
+      });
     }
-    const blob = await res.blob();
-    const file = new File([blob], a.fileName ?? 'photo', {
-      type: a.contentType || blob.type,
-    });
-    const uploadId = await uploadFile(file);
-    await api('api/send', {
-      conversationId: m.conversationId,
-      body: text.trim(),
-      attachmentUploadIds: [uploadId],
-      quoteMessageId: m.id,
-    });
     closePhotoReply();
     toast('Reply sent.');
   } catch (error) {
@@ -3529,10 +3608,13 @@ function photoRows(c, d) {
     const pick = el(
       'button',
       'setting-button',
-      customPhotoVersions[c.id] ? 'Change your photo for them' : 'Set your own photo'
+      customPhotoVersions[c.id]
+        ? 'Change your photo for them'
+        : 'Set your own photo'
     );
     pick.type = 'button';
-    pick.title = 'Only you see it. It beats their profile photo and your phone\'s.';
+    pick.title =
+      "Only you see it. It beats their profile photo and your phone's.";
     pick.addEventListener('click', () => pickCustomPhoto(c.id, pick));
     actions.append(pick);
     if (customPhotoVersions[c.id]) {
@@ -5162,7 +5244,8 @@ function starredRow(m) {
       ? 'You'
       : (m.author?.title ?? nameOf(m.authorConversationId));
   const where = c ? displayTitle(c) : 'Unknown chat';
-  const title = c?.type === 'group' ? `${from} in ${where}` : `${from} · ${where}`;
+  const title =
+    c?.type === 'group' ? `${from} in ${where}` : `${from} · ${where}`;
   const text = el('span', 'row-text');
   const top = el('span', 'row-top');
   top.append(
@@ -5202,12 +5285,14 @@ loadKeywords();
 // to Immich and keeps the API key; the page never sees it.
 let immichState = null;
 
-async function openImmich() {
+// onAttach: where the picked files go (the composer, or a photo reply).
+async function openImmich(onAttach = addDrafts) {
   closePopovers();
   if (!selectedId) {
     return;
   }
   immichState = {
+    onAttach: typeof onAttach === 'function' ? onAttach : addDrafts,
     conversationId: selectedId,
     view: 'recent',
     albumId: null,
@@ -5248,7 +5333,10 @@ const IMMICH_ERRORS = {
 };
 
 function immichError(error) {
-  return IMMICH_ERRORS[error.code] ?? `Immich failed (${error.code ?? error.message}).`;
+  return (
+    IMMICH_ERRORS[error.code] ??
+    `Immich failed (${error.code ?? error.message}).`
+  );
 }
 
 function showImmichConnect() {
@@ -5327,7 +5415,12 @@ function renderImmichTabs() {
   settings.title = 'Immich server';
   settings.append(icon('settings'));
   settings.addEventListener('click', showImmichConnect);
-  tabs.replaceChildren(tab('recent', 'Recent'), tab('albums', 'Albums'), search, settings);
+  tabs.replaceChildren(
+    tab('recent', 'Recent'),
+    tab('albums', 'Albums'),
+    search,
+    settings
+  );
 }
 
 async function showImmichView(view, { more = false } = {}) {
@@ -5398,7 +5491,9 @@ function immichAlbumGrid(albums) {
     if (album.thumbnailId) {
       tile.append(immichThumb(album.thumbnailId));
     }
-    tile.append(el('span', 'immich-album-name', `${album.name} (${album.count})`));
+    tile.append(
+      el('span', 'immich-album-name', `${album.name} (${album.count})`)
+    );
     tile.addEventListener('click', () => {
       immichState.albumId = album.id;
       immichState.albumName = album.name;
@@ -5433,7 +5528,11 @@ function immichAssetGrid() {
       tile.querySelector('.immich-check')?.remove();
       if (state.picked.has(item.id)) {
         tile.append(
-          el('span', 'immich-check', String([...state.picked.keys()].indexOf(item.id) + 1))
+          el(
+            'span',
+            'immich-check',
+            String([...state.picked.keys()].indexOf(item.id) + 1)
+          )
         );
       }
     };
@@ -5471,7 +5570,9 @@ function renderImmichFoot() {
   const count = el(
     'span',
     'sub',
-    state.picked.size ? `${state.picked.size} selected` : 'Pick photos or videos'
+    state.picked.size
+      ? `${state.picked.size} selected`
+      : 'Pick photos or videos'
   );
   const attach = el('button', 'setting-button primary', 'Attach');
   attach.type = 'button';
@@ -5497,7 +5598,8 @@ async function attachImmich(button) {
         });
       }
       const blob = await res.blob();
-      const converted = blob.type !== item.mimeType && blob.type.startsWith('image/jpeg');
+      const converted =
+        blob.type !== item.mimeType && blob.type.startsWith('image/jpeg');
       const name = converted
         ? item.fileName.replace(/\.[^.]+$/, '') + '.jpg'
         : item.fileName || 'photo';
@@ -5512,14 +5614,14 @@ async function attachImmich(button) {
   if (immichState !== state) {
     return;
   }
-  if (selectedId === state.conversationId) {
-    addDrafts(files);
+  if (selectedId === state.conversationId || state.onAttach !== addDrafts) {
+    state.onAttach(files);
   }
   closeImmich();
 }
 
 $('immich-open').append(icon('media'));
-$('immich-open').addEventListener('click', openImmich);
+$('immich-open').addEventListener('click', () => openImmich());
 $('immich-close').append(icon('close'));
 $('immich-close').addEventListener('click', closeImmich);
 $('immich').addEventListener('click', e => {
@@ -5536,10 +5638,11 @@ const WHATS_NEW = [
   [
     '2026-11-06',
     [
-      'Remind me: in a message\'s ⋯ menu, pick In 1 hour, In 3 hours, Tonight, Tomorrow or a time. It opens the chat at that message.',
+      "Remind me: in a message's ⋯ menu, pick In 1 hour, In 3 hours, Tonight, Tomorrow or a time. It opens the chat at that message.",
       'Keyword alerts: words that still notify from a muted chat (Settings, Notifications).',
       'Translate a message right in your browser, where the browser can (Chrome). Nothing leaves your computer.',
       'Replying to one photo of an album is now a comment only.',
+      'A reply to one photo can carry your own photos, GIFs, files, Immich photos or a sticker, like any reply.',
     ],
   ],
   [
@@ -5549,8 +5652,8 @@ const WHATS_NEW = [
       'Reply to one photo of an album: open it and press Reply at the top. Your comment quotes the message and carries that photo.',
       'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
       'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
-      'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',
-      'Your own photo for anyone: pick one in a chat\'s details. Only you see it, and it beats their profile photo.',
+      "What's New: this list, after each update. Reopen it in Settings, Appearance.",
+      "Your own photo for anyone: pick one in a chat's details. Only you see it, and it beats their profile photo.",
       'Starred messages: star any message from its ⋯ menu, then find them all from the ★ above the chat list.',
       'Typing :) or <3 makes the emoji. Backspace right after takes it back.',
       'Double-click a message to react with your first reaction.',
@@ -5566,7 +5669,7 @@ const WHATS_NEW = [
   [
     '2026-11-02',
     [
-      'Messages go out even when someone\'s safety number changed.',
+      "Messages go out even when someone's safety number changed.",
       'Contact cards: see them and send your contacts.',
     ],
   ],
@@ -5576,7 +5679,10 @@ const WHATS_NEW = [
   ],
   [
     '2026-10-26',
-    ['Block and unblock people from Settings.', 'See an edited message\'s history.'],
+    [
+      'Block and unblock people from Settings.',
+      "See an edited message's history.",
+    ],
   ],
   [
     '2026-10-19',
@@ -5598,11 +5704,11 @@ const WHATS_NEW = [
     '2026-10-13',
     [
       'Typing indicators, the unread line, and search.',
-      'Signal\'s chat menu, chat details and group management.',
+      "Signal's chat menu, chat details and group management.",
       'Voice notes, new chats and new groups.',
       'Reply privately to someone in a group.',
       'Link previews, sticker replies and scheduled messages.',
-      'Step through a message\'s photos.',
+      "Step through a message's photos.",
     ],
   ],
   [
@@ -5692,7 +5798,11 @@ function renderContactCard(m) {
     })}`;
     head.append(img);
   } else {
-    const blank = el('span', 'avatar contact-card-initials', initials(card.name ?? ''));
+    const blank = el(
+      'span',
+      'avatar contact-card-initials',
+      initials(card.name ?? '')
+    );
     blank.style.width = blank.style.height = '44px';
     head.append(blank);
   }
@@ -5764,7 +5874,9 @@ function renderContactChooser() {
             el('span', 'title', displayTitle(c))
           );
           li.addEventListener('click', () => {
-            if (confirm(`Send ${displayTitle(c)}'s contact card to this chat?`)) {
+            if (
+              confirm(`Send ${displayTitle(c)}'s contact card to this chat?`)
+            ) {
               closeContactChooser();
               sendContactCard(c.id);
             }
@@ -6295,7 +6407,7 @@ async function sendSticker(packId, stickerId) {
   }
 }
 
-async function openStickerPicker(anchorElement) {
+async function openStickerPicker(anchorElement, onPick = sendSticker) {
   const anchor = anchorElement.getBoundingClientRect();
   let data;
   try {
@@ -6344,7 +6456,8 @@ async function openStickerPicker(anchorElement) {
         cell.append(stickerImage(st.packId, st.id, STICKER_CELL_PX, st.emoji));
         cell.addEventListener('click', ev => {
           ev.stopPropagation();
-          sendSticker(st.packId, st.id);
+          closePopovers();
+          onPick(st.packId, st.id);
         });
         return cell;
       })
@@ -6865,7 +6978,10 @@ async function toggleTranslation(m) {
     });
     let from = source;
     try {
-      from = new Intl.DisplayNames([navigator.language], { type: 'language' }).of(source) ?? source;
+      from =
+        new Intl.DisplayNames([navigator.language], { type: 'language' }).of(
+          source
+        ) ?? source;
     } catch {
       // The code, then.
     }
@@ -6899,7 +7015,10 @@ function matchesKeyword(text) {
   }
   return keywordAlerts.some(word => {
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+    return new RegExp(
+      `(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`,
+      'iu'
+    ).test(text);
   });
 }
 
@@ -8896,7 +9015,11 @@ function markdownLinks(line) {
       const close = line.findIndex(
         (d, j) => j > i && (d.ch === ']' || d.ch === '[')
       );
-      if (close > i + 1 && line[close].ch === ']' && line[close + 1]?.ch === '(') {
+      if (
+        close > i + 1 &&
+        line[close].ch === ']' &&
+        line[close + 1]?.ch === '('
+      ) {
         const end = line.findIndex(
           (d, j) => j > close + 1 && (d.ch === ')' || /\s/.test(d.ch))
         );
@@ -9033,7 +9156,11 @@ function blockMarkdownPass(chars, from = 0, to = chars.length) {
     );
   });
   // A fence on the first line leaves a leading break; drop it.
-  if (lines.length > 0 && /^ *```/.test(lineText(lines[0])) && out[0]?.ch === '\n') {
+  if (
+    lines.length > 0 &&
+    /^ *```/.test(lineText(lines[0])) &&
+    out[0]?.ch === '\n'
+  ) {
     out.shift();
   }
   return [...chars.slice(0, start), ...out, ...chars.slice(end)];
@@ -10575,6 +10702,52 @@ $('lightbox-reply-form').addEventListener('submit', e => {
   e.preventDefault();
   sendPhotoReply($('lightbox-reply-text').value);
 });
+$('lightbox-reply-attach').append(icon('attach'));
+$('lightbox-reply-attach').addEventListener('click', () =>
+  $('lightbox-reply-input').click()
+);
+$('lightbox-reply-input').addEventListener('change', () => {
+  addPhotoReplyFiles([...$('lightbox-reply-input').files]);
+  $('lightbox-reply-input').value = '';
+});
+$('lightbox-reply-immich').append(icon('media'));
+$('lightbox-reply-immich').addEventListener('click', () =>
+  openImmich(addPhotoReplyFiles)
+);
+$('lightbox-reply-sticker').append(icon('sticker'));
+$('lightbox-reply-sticker').addEventListener('click', ev => {
+  ev.stopPropagation();
+  if (!$('sticker-picker').hidden) {
+    closePopovers();
+    return;
+  }
+  openStickerPicker($('lightbox-reply-sticker'), (packId, stickerId) =>
+    sendPhotoReply($('lightbox-reply-text').value, { packId, stickerId })
+  );
+});
+$('lightbox-reply-emoji').append(icon('react'));
+$('lightbox-reply-emoji').addEventListener('click', ev => {
+  ev.stopPropagation();
+  if (!$('emoji-picker').hidden) {
+    closePopovers();
+    return;
+  }
+  openEmojiPicker($('lightbox-reply-emoji'), e => {
+    const input = $('lightbox-reply-text');
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.setRangeText(e, start, end, 'end');
+    input.focus();
+    api('api/emojiUsed', { emoji: e }).catch(() => {});
+  });
+});
+$('lightbox-reply-text').addEventListener('paste', e => {
+  const files = [...(e.clipboardData?.files ?? [])];
+  if (files.length > 0) {
+    e.preventDefault();
+    addPhotoReplyFiles(files);
+  }
+});
 $('lightbox-goto').append(icon('goto'));
 $('lightbox-goto').addEventListener('click', () => {
   const m = lightbox?.gallery;
@@ -10674,6 +10847,10 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     closePopovers();
+    if (lightbox && !$('immich').hidden) {
+      closeImmich();
+      return;
+    }
     if (lightbox && !$('lightbox-reply-form').hidden) {
       closePhotoReply();
       return;

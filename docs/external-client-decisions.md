@@ -1204,3 +1204,17 @@ WHY: Mike (2026-11-06), after the first version marked notes read at once:
 "If it's marked as read as soon as I write it, it's useless as a note to
 self." (That first version, which kept Note to Self always read, was a
 misreading. It was reverted the same day.)
+
+## F53. Fork only: a photo reply carries anything a reply can
+
+DECISION: a reply to one photo (F47) works like any other reply. Next to the
+comment box are buttons for photos, GIFs and files from your computer, for
+Immich photos, for stickers and for emoji. Pasting an image into the box also
+adds it. Added files go after the photo in the same message, and that message
+quotes the album. A sticker can't carry the photo, so it is sent as a reply
+to the photo message the page has just sent. Phones then show the right photo
+in its quote. Signal fills a quote's thumbnail from the original message's
+first attachment, so pointing a quote at photo 7 isn't possible.
+
+WHY: Mike (2026-11-06): "This should let me respond with a .gif, a photo, a
+sticker, whatever, just like a normal comment."

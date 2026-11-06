@@ -352,7 +352,11 @@
       </div>
     </div>
     <div class="modal-backdrop" id="immich" hidden>
-      <div class="modal immich-modal" role="dialog" aria-labelledby="immich-title">
+      <div
+        class="modal immich-modal"
+        role="dialog"
+        aria-labelledby="immich-title"
+      >
         <div class="modal-head">
           <span id="immich-title">Immich</span>
           <button
@@ -669,7 +673,41 @@
         ></button>
       </div>
       <form class="lightbox-reply" id="lightbox-reply-form" hidden>
+        <div
+          class="lightbox-reply-extras"
+          id="lightbox-reply-extras"
+          hidden
+        ></div>
         <div class="lightbox-reply-row">
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-attach"
+            title="Add a photo, GIF or file"
+            aria-label="Add a photo, GIF or file"
+          ></button>
+          <input id="lightbox-reply-input" type="file" multiple hidden />
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-immich"
+            title="Immich"
+            aria-label="Immich"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-sticker"
+            title="Stickers"
+            aria-label="Stickers"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-emoji"
+            title="Emoji"
+            aria-label="Emoji"
+          ></button>
           <input
             type="text"
             id="lightbox-reply-text"

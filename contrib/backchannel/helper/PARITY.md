@@ -133,7 +133,7 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | Your own photo for anyone                         | done      | F44: kept by the helper                                |
 | What's New after an update                        | done      | F45: all entries since the start, new ones marked      |
 | Immich picker                                     | done      | F48: the helper calls Immich; the key stays on the server |
-| Reply to one photo of an album                    | done      | F47                                                    |
+| Reply to one photo of an album                    | done      | F47, F53: with photos, GIFs, files, stickers           |
 | Remind me about a message                         | done      | F49: kept by the helper                                |
 | Keyword alerts in muted chats                     | done      | F50: on the page only                                  |
 | On-device translate                               | done      | F51: browser's own Translator API (Chrome)             |
