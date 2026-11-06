@@ -2059,23 +2059,14 @@ function stepLightbox(delta) {
 
 // Reply to one photo of an album (decision F47), as Backchannel Android
 // bc9: a new message quoting the original, carrying that photo again (a
-// quote alone shows the album's first photo on phones), with an emoji or a
-// comment as its text.
-async function openPhotoReply() {
+// quote alone shows the album's first photo on phones), with a comment as
+// its text. No emoji row (Mike, 2026-11-06).
+function openPhotoReply() {
   const form = $('lightbox-reply-form');
   if (!form.hidden) {
     closePhotoReply();
     return;
   }
-  const row = $('lightbox-reply-emoji');
-  row.replaceChildren(
-    ...(await getPreferredReactions()).map(emoji => {
-      const b = el('button', 'lightbox-reply-pick', emoji);
-      b.type = 'button';
-      b.addEventListener('click', () => sendPhotoReply(emoji));
-      return b;
-    })
-  );
   form.hidden = false;
   $('lightbox-reply-text').value = '';
   $('lightbox-reply-text').focus();
@@ -5495,7 +5486,7 @@ const WHATS_NEW = [
     '2026-11-05',
     [
       'Immich: attach photos and videos straight from your own Immich server (the photos button by Contact). Your API key stays on your server.',
-      'React or comment on one photo of an album: open it and press Reply at the top. Your reply quotes the message and carries that photo.',
+      'Reply to one photo of an album: open it and press Reply at the top. Your comment quotes the message and carries that photo.',
       'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
       'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
       'What\'s New: this list, after each update. Reopen it in Settings, Appearance.',

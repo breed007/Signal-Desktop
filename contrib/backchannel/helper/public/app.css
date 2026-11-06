@@ -1113,22 +1113,6 @@ button {
   opacity: 0.5;
   pointer-events: none;
 }
-.lightbox-reply-emoji {
-  display: flex;
-  gap: 4px;
-}
-.lightbox-reply-pick {
-  border: 0;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 24px;
-  background: rgba(255, 255, 255, 0.12);
-  cursor: pointer;
-}
-.lightbox-reply-pick:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
 .lightbox-reply-row {
   display: flex;
   gap: 8px;

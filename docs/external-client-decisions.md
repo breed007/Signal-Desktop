@@ -1123,8 +1123,8 @@ Web do that, as well."
 ## F47. Fork only: reply to one photo of an album
 
 DECISION: as Backchannel Android bc9, the photo viewer has a Reply button.
-It opens your reactions and a comment box. Either one sends a new message to
-the same chat: that text, a quote of the original message, and the photo
+It opens a comment box that sends a new message to the same chat: the
+comment, a quote of the original message, and the photo
 (or video) you were looking at, attached again. A quote alone isn't enough
 because Signal's phones show the album's first photo in a quote. The page
 does it with existing calls (attachment read, upload, send), so it needs no
@@ -1134,6 +1134,10 @@ WHY: Mike (2026-11-05): "comment and emoji on a single entry in a
 multi image post. Even if that requires sending that single image back to
 the chat as a quote of the original with the emoji and the comment," and
 "Backchannel Web needs to know about" it.
+
+Update (Mike, 2026-11-06): "REPLY to single photo works fucking
+beautifully... Emoji single photo ... didn't like. Let's yoink." The emoji
+row is gone, on Android too; the comment reply stays as is.
 
 ## F48. Fork only: the Immich picker
 

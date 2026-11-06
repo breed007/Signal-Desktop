@@ -44,7 +44,7 @@ Backchannel does. Each new one is added here when it ships.
   server: recent, albums and smart search. The API key stays on your
   server.
 - **Reply to one photo of an album.** Signal can only quote the whole
-  message; Backchannel's photo viewer sends your emoji or comment with
+  message; Backchannel's photo viewer sends your comment with
   that one photo.
 - **Your own photo for anyone.** Pick a picture for a person in their
   chat details; it beats their profile photo, only you see it.
