@@ -3104,7 +3104,41 @@ function confirmDelete(c) {
 }
 
 // Back to no chat open, as Signal after archiving or deleting one.
+// Set when a note arrives while Note to Self is open (F52).
+let noteToSelfPending = false;
+
+function markNoteToSelfUnread(conversationId) {
+  api('api/conversation', {
+    conversationId,
+    change: { action: 'markUnread' },
+  }).catch(() => {});
+}
+
+function leavingConversation() {
+  if (noteToSelfPending && conversations.get(selectedId)?.noteToSelf) {
+    markNoteToSelfUnread(selectedId);
+  }
+  noteToSelfPending = false;
+}
+
+// Closing the page while in Note to Self counts as leaving it.
+window.addEventListener('pagehide', () => {
+  if (noteToSelfPending && conversations.get(selectedId)?.noteToSelf) {
+    fetch('api/conversation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: selectedId,
+        change: { action: 'markUnread' },
+      }),
+      keepalive: true,
+    }).catch(() => {});
+    noteToSelfPending = false;
+  }
+});
+
 function closeConversation() {
+  leavingConversation();
   if (recording) {
     cancelRecording();
   }
@@ -4167,6 +4201,7 @@ async function selectConversation(id) {
   if (id === selectedId) {
     return;
   }
+  leavingConversation();
   // A recording in progress stays with its chat as a draft.
   if (recording) {
     await stopRecording({ send: false });
@@ -7057,19 +7092,19 @@ function connectEvents() {
   });
   on('message.added', m => {
     rememberAuthors(m);
-    // A note you just wrote here leaves Note to Self unread (F52), like one
-    // from your other devices.
+    // A new note leaves Note to Self unread (F52), as on Android: at once
+    // when you're elsewhere, or when you leave it.
     const target = conversations.get(m.conversationId);
     if (
       target?.noteToSelf &&
       m.direction === 'outgoing' &&
-      !isUnread(target) &&
       Date.now() - m.sentAt < 60_000
     ) {
-      api('api/conversation', {
-        conversationId: target.id,
-        change: { action: 'markUnread' },
-      }).catch(() => {});
+      if (selectedId === target.id) {
+        noteToSelfPending = true;
+      } else if (!isUnread(target)) {
+        markNoteToSelfUnread(target.id);
+      }
     }
     // After a jump, it arrives when paging reaches the newest.
     if (m.conversationId === selectedId && newerCursor === null) {

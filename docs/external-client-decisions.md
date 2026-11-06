@@ -1193,10 +1193,12 @@ translation to stay on the device for security.
 ## F52. Fork only: a new note leaves Note to Self unread
 
 DECISION: Note to Self works as a to-do pile. A note you write, on the page
-or on another device, leaves Note to Self unread. The page marks it unread
-with Signal's own "Mark as unread", which syncs. It becomes read only when
-you open Note to Self again: the page never marks it read while you sit in
-it. Signal Desktop itself is unchanged.
+or on another device, leaves Note to Self unread, using Signal's own "Mark
+as unread", which syncs. A note that arrives while you're elsewhere marks it
+unread at once. A note written while Note to Self is open marks it unread
+when you leave it, or when you close the page. It becomes read only when you
+open Note to Self again; the page never marks it read while you're in it.
+Backchannel Android does the same. Signal Desktop itself is unchanged.
 
 WHY: Mike (2026-11-06), after the first version marked notes read at once:
 "If it's marked as read as soon as I write it, it's useless as a note to
