@@ -137,7 +137,7 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | Remind me about a message                         | done      | F49: kept by the helper                                |
 | Keyword alerts in muted chats                     | done      | F50: on the page only                                  |
 | On-device translate                               | done      | F51: browser's own Translator API (Chrome)             |
-| On-device voice-note transcription                | missing   | needs a model on Six; browsers send speech to Google   |
+| On-device voice-note transcription                | skipped   | Mike 2026-11-06: no (would need a model on Six)        |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
 | Link someone to a phone contact                   | different | F46: phone links sync over; on the web, nickname + own photo |
 | Notifications, screenshots, passphrase, push, icon, Photo apps, Open links | different | phone-only |
