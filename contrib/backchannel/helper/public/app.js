@@ -4231,12 +4231,17 @@ async function selectConversation(id) {
   }
   renderTyping();
   focusCompose();
-  maybeMarkRead();
+  maybeMarkRead({ opened: true });
 }
 
 // Marks the open chat read in Signal, only while the user can see it.
-async function maybeMarkRead() {
+// Note to Self only when you open it (decision F52): a new note stays
+// unread until you leave and come back.
+async function maybeMarkRead({ opened = false } = {}) {
   const c = conversations.get(selectedId);
+  if (c?.noteToSelf && !opened) {
+    return;
+  }
   if (markReadInFlight) {
     markReadAgain = true;
     return;
@@ -4271,7 +4276,7 @@ async function maybeMarkRead() {
   }
   if (markReadAgain) {
     markReadAgain = false;
-    maybeMarkRead();
+    maybeMarkRead({ opened });
   }
 }
 
@@ -7052,6 +7057,20 @@ function connectEvents() {
   });
   on('message.added', m => {
     rememberAuthors(m);
+    // A note you just wrote here leaves Note to Self unread (F52), like one
+    // from your other devices.
+    const target = conversations.get(m.conversationId);
+    if (
+      target?.noteToSelf &&
+      m.direction === 'outgoing' &&
+      !isUnread(target) &&
+      Date.now() - m.sentAt < 60_000
+    ) {
+      api('api/conversation', {
+        conversationId: target.id,
+        change: { action: 'markUnread' },
+      }).catch(() => {});
+    }
     // After a jump, it arrives when paging reaches the newest.
     if (m.conversationId === selectedId && newerCursor === null) {
       putMessage(m);

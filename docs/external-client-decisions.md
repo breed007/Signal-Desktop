@@ -1190,15 +1190,15 @@ WHY (F49 to F51): Mike's parity rule (2026-11-05) for Backchannel Android's
 reminders and keyword alerts (2026-11-06). He wants transcription and
 translation to stay on the device for security.
 
-## F52. Fork only: Note to Self is never unread
+## F52. Fork only: a new note leaves Note to Self unread
 
-DECISION: as Backchannel Android, a note that lands in Note to Self from
-another of your devices counts as read. Signal Desktop counted it unread
-until you left Note to Self and came back. The fork marks Note to Self read
-whenever its unread count goes above zero, without read receipts (they
-would only go to yourself). A manual "Mark as unread" is left alone. This
-applies to the page and to Signal Desktop on Six.
+DECISION: Note to Self works as a to-do pile. A note you write, on the page
+or on another device, leaves Note to Self unread. The page marks it unread
+with Signal's own "Mark as unread", which syncs. It becomes read only when
+you open Note to Self again: the page never marks it read while you sit in
+it. Signal Desktop itself is unchanged.
 
-WHY: Mike (2026-11-06): "note to self isn't automatically marked read as
-soon as you paste the note... it's always been that way in all versions of
-Signal. It's annoying."
+WHY: Mike (2026-11-06), after the first version marked notes read at once:
+"If it's marked as read as soon as I write it, it's useless as a note to
+self." (That first version, which kept Note to Self always read, was a
+misreading. It was reverted the same day.)
