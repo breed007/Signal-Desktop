@@ -2588,6 +2588,15 @@ function renderMessage(m, prev, next) {
       body.append(' …');
     }
     bubble.append(body);
+    const translated = translations.get(m.id);
+    if (translated) {
+      const box = el('div', 'translation');
+      box.append(
+        el('span', 'translation-label', `Translated from ${translated.from}`),
+        el('span', 'translation-text', translated.text)
+      );
+      bubble.append(box);
+    }
   }
 
   const meta = el('span', 'meta');
@@ -2650,6 +2659,7 @@ function cachedMessage(m, prev, next) {
     capabilities,
     formatTime(m.sentAt),
     starredIds.has(m.id),
+    translations.get(m.id)?.text,
   ]);
   const cached = messageCache.get(m.id);
   if (cached && cached.key === key) {
@@ -5143,6 +5153,7 @@ $('starred').addEventListener('click', e => {
 });
 loadStarredIds();
 loadCustomPhotos();
+loadKeywords();
 
 // --- Immich picker (decision F48) ------------------------------------------
 
@@ -5482,6 +5493,15 @@ $('immich').addEventListener('click', e => {
 // Newest first. As Backchannel Android for now: every entry since the
 // beginning shows, and the ones since your last look are marked New.
 const WHATS_NEW = [
+  [
+    '2026-11-06',
+    [
+      'Remind me: in a message\'s ⋯ menu, pick In 1 hour, In 3 hours, Tonight, Tomorrow or a time. It opens the chat at that message.',
+      'Keyword alerts: words that still notify from a muted chat (Settings, Notifications).',
+      'Translate a message right in your browser, where the browser can (Chrome). Nothing leaves your computer.',
+      'Replying to one photo of an album is now a comment only.',
+    ],
+  ],
   [
     '2026-11-05',
     [
@@ -5988,6 +6008,11 @@ function settingsSections() {
           settingSwitch(s.notificationSound, v => set('notificationSound', v))
         ),
         settingRow(
+          'Keyword alerts',
+          'A message in a muted chat with one of these words still notifies on this page. Whole words, any case. Backchannel for Android has its own list.',
+          keywordsInput()
+        ),
+        settingRow(
           'Reaction notifications',
           'Notify when someone reacts to your messages. Applies to all your devices.',
           settingSwitch(s.reactionNotifications, v =>
@@ -6468,6 +6493,11 @@ function openMoreMenu(m, anchor) {
   };
   if (m.kind === 'text' && m.body) {
     add('copy', 'Copy text', () => copyText(toUnicode(messagePieces(m))));
+    if (canTranslate()) {
+      add('note', translations.has(m.id) ? 'Show original' : 'Translate', () =>
+        toggleTranslation(m)
+      );
+    }
   }
   if (canReplyTo(m)) {
     add('reply', 'Reply', () => startReply(m));
@@ -6504,6 +6534,7 @@ function openMoreMenu(m, anchor) {
   if (canReplyTo(m)) {
     const starred = starredIds.has(m.id);
     add('star', starred ? 'Unstar' : 'Star', () => setStar(m, !starred));
+    add('clock', 'Remind me', () => openReminderMenu(m, anchor));
   }
   add('trash', 'Delete for me', () => deleteMessage(m, false));
   if (m.canDeleteForEveryone) {
@@ -6606,11 +6637,261 @@ async function deleteMessage(m, forEveryone) {
   }
 }
 
+// --- reminders (decision F49) -----------------------------------------------
+
+// As Backchannel Android: "Remind me" on a message. The helper keeps them
+// and tells open pages when one is due.
+function reminderChoices(now = new Date()) {
+  const at = (days, hour) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    return d.getTime();
+  };
+  const choices = [
+    ['In 1 hour', now.getTime() + 60 * 60 * 1000],
+    ['In 3 hours', now.getTime() + 3 * 60 * 60 * 1000],
+  ];
+  // Hidden when it's less than half an hour away, or past.
+  if (at(0, 20) - now.getTime() >= 30 * 60 * 1000) {
+    choices.push(['Tonight, 8 PM', at(0, 20)]);
+  }
+  choices.push(['Tomorrow, 9 AM', at(1, 9)]);
+  return choices;
+}
+
+function openReminderMenu(m, anchor) {
+  const menu = $('more-menu');
+  const items = reminderChoices().map(([label, at]) => {
+    const item = el('button', 'menu-item');
+    item.type = 'button';
+    item.append(icon('clock'), el('span', '', label));
+    item.addEventListener('click', ev => {
+      ev.stopPropagation();
+      closePopovers();
+      addReminder(m, at);
+    });
+    return item;
+  });
+  const pick = el('form', 'reminder-pick');
+  const input = el('input', 'setting-input');
+  input.type = 'datetime-local';
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  input.min = local.toISOString().slice(0, 16);
+  input.setAttribute('aria-label', 'Pick a date and time');
+  const set = el('button', 'setting-button small', 'Set');
+  set.type = 'submit';
+  pick.append(input, set);
+  pick.addEventListener('click', ev => ev.stopPropagation());
+  pick.addEventListener('submit', ev => {
+    ev.preventDefault();
+    const at = new Date(input.value).getTime();
+    if (!Number.isFinite(at) || at <= Date.now()) {
+      toast('Pick a time in the future.');
+      return;
+    }
+    closePopovers();
+    addReminder(m, at);
+  });
+  menu.replaceChildren(...items, pick);
+  placePopover(menu, anchor);
+  $('more-menu').hidden = false;
+}
+
+async function addReminder(m, at) {
+  try {
+    await api('api/reminder', {
+      conversationId: m.conversationId,
+      messageId: m.id,
+      at,
+      preview: summarize(m),
+    });
+    const when = new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(at);
+    toast(`I'll remind you ${when}.`);
+  } catch (error) {
+    toast(`Reminder not set (${error.code ?? error.message}).`);
+  }
+}
+
+async function loadDueReminders() {
+  try {
+    const { reminders } = await api('api/reminders');
+    reminders.filter(r => r.due).forEach(showReminder);
+  } catch {
+    // They wait in the helper.
+  }
+}
+
+const shownReminders = new Set();
+
+function showReminder(r) {
+  if (shownReminders.has(r.id)) {
+    return;
+  }
+  shownReminders.add(r.id);
+  const c = conversations.get(r.conversationId);
+  const title = `Reminder: ${c ? displayTitle(c) : 'a message'}`;
+  const open = () => {
+    window.focus();
+    jumpToMessage({ conversationId: r.conversationId, id: r.messageId });
+  };
+  // Shown once: the helper forgets it now.
+  api('api/reminder', { removeId: r.id }).catch(() => {});
+  const content = signalSettings?.notificationContent ?? 'message';
+  const body = content === 'message' ? r.preview : 'Open to see the message';
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification(title, {
+      body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
+      tag: `reminder-${r.id}`,
+      icon: 'icon.svg',
+    });
+    n.addEventListener('click', open);
+  }
+  reminderBanner(title, body, open);
+}
+
+// In the page too, in case notifications are off or missed.
+function reminderBanner(title, body, open) {
+  const bar = el('div', 'reminder-bar');
+  const text = el('button', 'reminder-text');
+  text.type = 'button';
+  text.append(el('strong', '', title), el('span', '', body));
+  text.addEventListener('click', () => {
+    bar.remove();
+    open();
+  });
+  const close = el('button', 'icon-button');
+  close.type = 'button';
+  close.title = 'Dismiss';
+  close.append(icon('close'));
+  close.addEventListener('click', () => bar.remove());
+  bar.append(icon('clock'), text, close);
+  $('reminders').append(bar);
+}
+
+// --- translate (decision F51) -----------------------------------------------
+
+// The browser's own on-device translation (Chrome's Translator and
+// LanguageDetector APIs, with downloadable language packs). Nothing leaves
+// the browser; where the browser has no such API the menu item is absent.
+const translations = new Map();
+
+function canTranslate() {
+  return 'Translator' in self && 'LanguageDetector' in self;
+}
+
+function targetLanguage() {
+  return (navigator.language || 'en').split('-')[0];
+}
+
+async function toggleTranslation(m) {
+  if (translations.has(m.id)) {
+    translations.delete(m.id);
+    messageCache.delete(m.id);
+    renderMessages();
+    return;
+  }
+  try {
+    const detector = await LanguageDetector.create();
+    const [best] = await detector.detect(m.body);
+    const source = best?.detectedLanguage;
+    const target = targetLanguage();
+    if (!source || source === 'und') {
+      toast("Couldn't tell what language that is.");
+      return;
+    }
+    if (source === target) {
+      toast('That message is already in your language.');
+      return;
+    }
+    const availability = await Translator.availability({
+      sourceLanguage: source,
+      targetLanguage: target,
+    });
+    if (availability === 'unavailable') {
+      toast(`This browser can't translate ${source} to ${target}.`);
+      return;
+    }
+    if (availability !== 'available') {
+      toast('Downloading the language pack in your browser…');
+    }
+    const translator = await Translator.create({
+      sourceLanguage: source,
+      targetLanguage: target,
+    });
+    let from = source;
+    try {
+      from = new Intl.DisplayNames([navigator.language], { type: 'language' }).of(source) ?? source;
+    } catch {
+      // The code, then.
+    }
+    translations.set(m.id, {
+      text: await translator.translate(m.body),
+      from,
+    });
+    messageCache.delete(m.id);
+    renderMessages();
+  } catch (error) {
+    toast(`Not translated (${error.message}).`);
+  }
+}
+
+// --- keyword alerts (decision F50) ------------------------------------------
+
+let keywordAlerts = [];
+
+async function loadKeywords() {
+  try {
+    keywordAlerts = (await api('api/keywords')).words;
+  } catch {
+    keywordAlerts = [];
+  }
+}
+
+// Whole words, any case, as on Android.
+function matchesKeyword(text) {
+  if (!text || keywordAlerts.length === 0) {
+    return false;
+  }
+  return keywordAlerts.some(word => {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+  });
+}
+
+function keywordsInput() {
+  const input = el('input', 'setting-input');
+  input.type = 'text';
+  input.placeholder = 'Words, separated by commas';
+  input.value = keywordAlerts.join(', ');
+  input.addEventListener('change', async () => {
+    try {
+      const { words } = await api('api/keywords', {
+        words: input.value.split(','),
+      });
+      keywordAlerts = words;
+      input.value = words.join(', ');
+      toast(words.length ? 'Keyword alerts saved.' : 'Keyword alerts off.');
+    } catch (error) {
+      toast(`Not saved (${error.code ?? error.message}).`);
+    }
+  });
+  return input;
+}
+
 // --- notifications -----------------------------------------------------------
 
 function notify(m) {
   const c = conversations.get(m.conversationId);
-  if (!c || c.muted || m.direction !== 'incoming') {
+  if (!c || m.direction !== 'incoming') {
+    return;
+  }
+  // Keyword alerts (F50) get through a muted chat.
+  if (c.muted && !matchesKeyword(m.body)) {
     return;
   }
   if (document.hasFocus() && selectedId === m.conversationId) {
@@ -6711,7 +6992,9 @@ function connectEvents() {
     disconnectedSince = null;
     reconnectDelay = 1000;
     renderBanner();
-    loadState().catch(() => {});
+    loadState()
+      .then(loadDueReminders)
+      .catch(() => {});
   });
   on('resync', () => loadState().catch(() => {}));
   on('scheduled.changed', ({ counts }) => {
@@ -6732,6 +7015,10 @@ function connectEvents() {
     renderBanner();
   });
   on('customPhotos.changed', ({ versions }) => setCustomPhotos(versions));
+  on('reminder.due', showReminder);
+  on('keywords.changed', ({ words }) => {
+    keywordAlerts = words;
+  });
   on('conversation.updated', c => {
     conversations.set(c.id, c);
     renderConversations();

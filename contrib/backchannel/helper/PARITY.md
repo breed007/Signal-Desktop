@@ -134,6 +134,10 @@ should. Checked against Android's change list of 2026-11-04 (bc1 to bc9).
 | What's New after an update                        | done      | F45: all entries since the start, new ones marked      |
 | Immich picker                                     | done      | F48: the helper calls Immich; the key stays on the server |
 | Reply to one photo of an album                    | done      | F47                                                    |
+| Remind me about a message                         | done      | F49: kept by the helper                                |
+| Keyword alerts in muted chats                     | done      | F50: on the page only                                  |
+| On-device translate                               | done      | F51: browser's own Translator API (Chrome)             |
+| On-device voice-note transcription                | missing   | needs a model on Six; browsers send speech to Google   |
 | Lock a chat                                       | different | the page is behind its own token; no fingerprint here  |
 | Link someone to a phone contact                   | different | F46: phone links sync over; on the web, nickname + own photo |
 | Notifications, screenshots, passphrase, push, icon, Photo apps, Open links | different | phone-only |

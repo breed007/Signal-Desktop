@@ -1155,3 +1155,37 @@ normal attachment path, so there is no new Allow.
 WHY: Mike (2026-11-05), on Android parity: "Where we can get parity, we
 should," plus the standing rule that a feature on one side is built on the
 other where possible.
+
+## F49. Fork only: Remind me
+
+DECISION: as Backchannel Android, a message's ⋯ menu has "Remind me", with
+In 1 hour, In 3 hours, Tonight 8 PM (hidden when it's less than 30 minutes
+away), Tomorrow 9 AM, or a date and time you pick. The helper keeps
+reminders in reminders.json in its config folder (mode 0600). When one comes
+due it tells the open pages, which show a notification ("Reminder: <chat>"
+with the message text, following Signal's notification content setting)
+and a banner in the page. Either one opens the chat at that message. A
+reminder that comes due with no page open waits until a page opens. Nothing
+goes to Signal or syncs.
+
+## F50. Fork only: keyword alerts
+
+DECISION: as Backchannel Android, Settings > Notifications > Keyword alerts
+takes words separated by commas. An incoming message in a muted chat that
+contains one, as a whole word in any case, notifies on the page anyway. The
+helper keeps the list in keywords.json, so every open page shares it. With
+no page open, Signal Desktop's own notifications still skip muted chats.
+
+## F51. Fork only: translate a message in the browser
+
+DECISION: a text message's ⋯ menu has "Translate" where the browser has
+on-device translation (Chrome's Translator and LanguageDetector APIs). The
+translation shows under the text, and "Show original" hides it. Language
+packs download into the browser, and nothing leaves the browser. Where the
+API is missing (other browsers, possibly Rambox), the item is absent.
+Voice-note transcription isn't on the page yet: the only browser speech API
+sends audio to Google, so it would need a model running on Six.
+
+WHY (F49 to F51): Mike's parity rule (2026-11-05) for Backchannel Android's
+reminders and keyword alerts (2026-11-06). He wants transcription and
+translation to stay on the device for security.

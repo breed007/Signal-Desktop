@@ -14,6 +14,7 @@ import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { ContactPhotoRefresh } from '../contactPhotos.mjs';
+import { Reminders } from '../reminders.mjs';
 import { FakeBridge, makeConversation, makeMessage } from './fake-bridge.mjs';
 
 const HELPER = join(
@@ -1370,6 +1371,55 @@ describe('backchannel helper', () => {
     assert.deepEqual(JSON.parse(after.text).ids, []);
   });
 
+  it('keeps reminders and keyword alerts in the helper', async () => {
+    const at = Date.now() + 60 * 60 * 1000;
+    const added = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: {
+        conversationId: alice.id,
+        messageId: 'm-1',
+        at,
+        preview: 'call mom',
+      },
+    });
+    assert.equal(added.status, 200);
+    const { reminder } = JSON.parse(added.text);
+    assert.equal(reminder.due, false);
+    const listed = await http(port, { path: `/${helper.token}/api/reminders` });
+    assert.equal(JSON.parse(listed.text).reminders[0].preview, 'call mom');
+    const past = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: {
+        conversationId: alice.id,
+        messageId: 'm-1',
+        at: Date.now() - 3600_000,
+      },
+    });
+    assert.equal(past.status, 400);
+    await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: { removeId: reminder.id },
+    });
+    const empty = await http(port, { path: `/${helper.token}/api/reminders` });
+    assert.deepEqual(JSON.parse(empty.text).reminders, []);
+
+    const saved = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/keywords`,
+      headers: json,
+      body: { words: [' Pizza', 'pizza', '', 'urgent '] },
+    });
+    assert.deepEqual(JSON.parse(saved.text).words, ['Pizza', 'urgent']);
+    const read = await http(port, { path: `/${helper.token}/api/keywords` });
+    assert.deepEqual(JSON.parse(read.text).words, ['Pizza', 'urgent']);
+  });
+
   it('proxies Immich and never hands back the key', async () => {
     const seen = [];
     const immich = createServer((req, res) => {
@@ -1758,5 +1808,39 @@ describe('contact photo refresh', () => {
     await offline.daily();
     assert.equal(calls, 1);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('reminders', () => {
+  it('fires a due reminder once and remembers it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bc-rem-'));
+    let now = 1_000_000;
+    const due = [];
+    const file = join(dir, 'reminders.json');
+    const r = new Reminders(file, {
+      onDue: item => due.push(item),
+      now: () => now,
+    });
+    r.add({
+      conversationId: 'c',
+      messageId: 'm',
+      at: now + 1000,
+      preview: 'x',
+    });
+    r.start();
+    assert.equal(due.length, 0);
+    now += 2000;
+    r.start();
+    r.start();
+    r.stop();
+    assert.equal(due.length, 1);
+    const again = new Reminders(file, {
+      onDue: item => due.push(item),
+      now: () => now,
+    });
+    again.start();
+    again.stop();
+    assert.equal(due.length, 1);
+    assert.equal(again.list()[0].due, true);
   });
 });

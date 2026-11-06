@@ -217,6 +217,8 @@ export function createWebServer({
   stars = null,
   customPhotos = null,
   immich = null,
+  reminders = null,
+  keywords = null,
   scheduled = null,
   contactPhotos = null,
   log,
@@ -1070,6 +1072,50 @@ export function createWebServer({
       return;
     }
     // Starred messages (decision F43), kept by the helper.
+    // Message reminders (decision F49).
+    if (req.method === 'GET' && route === 'api/reminders') {
+      sendJson(res, 200, { reminders: reminders?.list() ?? [] });
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/reminder') {
+      const { conversationId, messageId, at, preview, removeId } =
+        await readJson(req);
+      if (removeId !== undefined) {
+        sendJson(res, 200, {
+          ok: reminders?.remove(String(removeId)) ?? false,
+        });
+        return;
+      }
+      const item =
+        reminders?.add({
+          conversationId,
+          messageId,
+          at: Number(at),
+          preview,
+        }) ?? null;
+      if (!item) {
+        sendJson(res, 400, { error: { code: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      sendJson(res, 200, { reminder: item });
+      return;
+    }
+    // Keyword alerts (decision F50).
+    if (req.method === 'GET' && route === 'api/keywords') {
+      sendJson(res, 200, { words: keywords?.get() ?? [] });
+      return;
+    }
+    if (req.method === 'POST' && route === 'api/keywords') {
+      const { words } = await readJson(req);
+      const saved = keywords?.set(words) ?? null;
+      if (!saved) {
+        sendJson(res, 400, { error: { code: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      broadcast('keywords.changed', { words: saved });
+      sendJson(res, 200, { words: saved });
+      return;
+    }
     if (req.method === 'GET' && route === 'api/starIds') {
       sendJson(res, 200, { ids: stars?.ids() ?? [] });
       return;

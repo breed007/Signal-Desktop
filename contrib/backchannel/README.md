@@ -40,6 +40,10 @@ Backchannel does. Each new one is added here when it ships.
   sends each chat its own copy.
 - **Starred messages.** Star any message from its menu and find it again
   in one list, for all chats or one. Kept on your server.
+- **Remind me** about any message: in an hour, tonight, tomorrow or a
+  time you pick. Opens the chat at that message.
+- **Keyword alerts** that get through a muted chat.
+- **Translate** a message in your browser, on your computer only (Chrome).
 - **Immich.** Attach photos and videos straight from your own Immich
   server: recent, albums and smart search. The API key stays on your
   server.
