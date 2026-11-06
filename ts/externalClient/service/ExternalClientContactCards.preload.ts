@@ -35,7 +35,8 @@ export async function sendContact({
     return { ok: false, code: ErrorCode.NotFound };
   }
   const draft = withE164AsMissingName(
-    getShareContactDraft(person.attributes),
+    // Contact photos first, as everywhere in this fork (decision F37).
+    getShareContactDraft(person.attributes, { preferContactAvatars: true }),
     getRegionCode(window.reduxStore.getState())
   );
   const contact = applyShareContactSelection(draft, {

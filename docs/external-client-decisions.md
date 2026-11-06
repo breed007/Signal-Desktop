@@ -1189,3 +1189,16 @@ sends audio to Google, so it would need a model running on Six.
 WHY (F49 to F51): Mike's parity rule (2026-11-05) for Backchannel Android's
 reminders and keyword alerts (2026-11-06). He wants transcription and
 translation to stay on the device for security.
+
+## F52. Fork only: Note to Self is never unread
+
+DECISION: as Backchannel Android, a note that lands in Note to Self from
+another of your devices counts as read. Signal Desktop counted it unread
+until you left Note to Self and came back. The fork marks Note to Self read
+whenever its unread count goes above zero, without read receipts (they
+would only go to yourself). A manual "Mark as unread" is left alone. This
+applies to the page and to Signal Desktop on Six.
+
+WHY: Mike (2026-11-06): "note to self isn't automatically marked read as
+soon as you paste the note... it's always been that way in all versions of
+Signal. It's annoying."
