@@ -1102,6 +1102,86 @@ button {
   object-fit: contain;
 }
 
+.lightbox-reply {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+.lightbox-reply.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.lightbox-reply-row {
+  display: flex;
+  gap: 8px;
+  width: min(480px, 100%);
+}
+.lightbox-reply-row .icon-button {
+  color: #ffffff;
+  flex: none;
+}
+.lightbox-reply-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(480px, 100%);
+}
+.lightbox-reply-extra {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  max-width: 160px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.lightbox-reply-extra img {
+  height: 48px;
+  width: auto;
+  max-width: 96px;
+  object-fit: cover;
+}
+.lightbox-reply-extra-name {
+  padding: 0 24px 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lightbox-reply-extra-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  font: inherit;
+  line-height: 18px;
+  cursor: pointer;
+}
+/* Pickers and Immich also open over the photo viewer (decision F53). */
+#sticker-picker {
+  z-index: 32;
+}
+#immich {
+  z-index: 33;
+}
+.lightbox-reply-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 18px;
+  border: 0;
+  font: inherit;
+}
+
 .lightbox-caption {
   padding: 12px 24px 20px;
   text-align: center;
@@ -2111,6 +2191,27 @@ button {
 }
 
 /* Polls, laid out like Signal's poll bubble. */
+/* A message with a list is drawn a line at a time, so list items hang
+   their wrapped lines under the text (decision F42). */
+.body-line {
+  display: block;
+  min-height: 1lh;
+}
+
+.list-line {
+  padding-left: var(--hang);
+  text-indent: calc(-1 * var(--hang));
+}
+
+/* A starred message (decision F43). */
+.meta .star-mark {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  fill: currentColor;
+}
+
 /* A shared contact (decision F41), as Signal's contact bubble. */
 .contact-card {
   display: flex;
@@ -3924,4 +4025,185 @@ label.poll-option {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
+}
+
+/* What's New (decision F45) */
+.whats-new-list {
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+.whats-new-day {
+  margin: 14px 0 4px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.whats-new-day .new-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8em;
+}
+.whats-new-list ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.whats-new-list li {
+  margin: 3px 0;
+  line-height: 1.35;
+}
+
+/* Immich picker (decision F48) */
+.immich-modal {
+  width: min(760px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 48px));
+}
+.immich-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 8px;
+  align-items: center;
+}
+.immich-tabs input {
+  flex: 1;
+  min-width: 0;
+}
+.immich-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+.immich-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 4px;
+}
+.immich-tile {
+  position: relative;
+  aspect-ratio: 1;
+  border: 0;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--hover);
+  cursor: pointer;
+}
+.immich-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.immich-tile.picked {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+.immich-tile .immich-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 13px;
+  line-height: 22px;
+  text-align: center;
+}
+.immich-tile .immich-video {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  text-shadow: 0 0 3px #000;
+}
+.immich-album-name {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 18px 8px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: #ffffff;
+  font-size: 13px;
+  text-align: left;
+}
+.immich-more {
+  display: block;
+  margin: 12px auto;
+}
+.immich-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+.immich-foot {
+  padding: 12px 16px;
+}
+
+/* Reminders (decision F49) */
+.reminders {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+}
+.reminder-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.reminder-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reminder-text span {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.reminder-pick {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+/* Translate (decision F51) */
+.translation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 25%, transparent);
+  white-space: pre-wrap;
+}
+.translation-label {
+  font-size: 12px;
+  opacity: 0.7;
 }

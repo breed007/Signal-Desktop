@@ -7,13 +7,14 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { ContactPhotoRefresh } from '../contactPhotos.mjs';
+import { Reminders } from '../reminders.mjs';
 import { FakeBridge, makeConversation, makeMessage } from './fake-bridge.mjs';
 
 const HELPER = join(
@@ -1343,6 +1344,203 @@ describe('backchannel helper', () => {
     assert.equal(reply.params.quoteMessageId, 'm1');
   });
 
+  it('keeps starred messages in the helper', async () => {
+    const kept = makeMessage(alice.id, { body: 'keep this' });
+    bridge.messages.set(alice.id, [
+      ...(bridge.messages.get(alice.id) ?? []),
+      kept,
+    ]);
+    const star = starred =>
+      http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/star`,
+        headers: json,
+        body: { messageId: kept.id, conversationId: alice.id, starred },
+      });
+    assert.equal((await star(true)).status, 200);
+    const ids = await http(port, { path: `/${helper.token}/api/starIds` });
+    assert.deepEqual(JSON.parse(ids.text).ids, [kept.id]);
+    const list = await http(port, {
+      path: `/${helper.token}/api/stars?conversationId=${alice.id}`,
+    });
+    const { items } = JSON.parse(list.text);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].message.body, 'keep this');
+    await star(false);
+    const after = await http(port, { path: `/${helper.token}/api/starIds` });
+    assert.deepEqual(JSON.parse(after.text).ids, []);
+  });
+
+  it('keeps reminders and keyword alerts in the helper', async () => {
+    const at = Date.now() + 60 * 60 * 1000;
+    const added = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: {
+        conversationId: alice.id,
+        messageId: 'm-1',
+        at,
+        preview: 'call mom',
+      },
+    });
+    assert.equal(added.status, 200);
+    const { reminder } = JSON.parse(added.text);
+    assert.equal(reminder.due, false);
+    const listed = await http(port, { path: `/${helper.token}/api/reminders` });
+    assert.equal(JSON.parse(listed.text).reminders[0].preview, 'call mom');
+    const past = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: {
+        conversationId: alice.id,
+        messageId: 'm-1',
+        at: Date.now() - 3600_000,
+      },
+    });
+    assert.equal(past.status, 400);
+    await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/reminder`,
+      headers: json,
+      body: { removeId: reminder.id },
+    });
+    const empty = await http(port, { path: `/${helper.token}/api/reminders` });
+    assert.deepEqual(JSON.parse(empty.text).reminders, []);
+
+    const saved = await http(port, {
+      method: 'POST',
+      path: `/${helper.token}/api/keywords`,
+      headers: json,
+      body: { words: [' Pizza', 'pizza', '', 'urgent '] },
+    });
+    assert.deepEqual(JSON.parse(saved.text).words, ['Pizza', 'urgent']);
+    const read = await http(port, { path: `/${helper.token}/api/keywords` });
+    assert.deepEqual(JSON.parse(read.text).words, ['Pizza', 'urgent']);
+  });
+
+  it('proxies Immich and never hands back the key', async () => {
+    const seen = [];
+    const immich = createServer((req, res) => {
+      seen.push({ method: req.method, url: req.url });
+      if (req.headers['x-api-key'] !== 'secret-key') {
+        res.writeHead(401).end();
+        return;
+      }
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/albums') {
+        res.end(
+          JSON.stringify([
+            {
+              id: 'a1',
+              albumName: 'Trip',
+              assetCount: 2,
+              albumThumbnailAssetId: 'b2',
+            },
+          ])
+        );
+      } else if (req.url === '/api/search/metadata') {
+        res.end(
+          JSON.stringify({
+            assets: {
+              items: [
+                {
+                  id: 'abc1',
+                  type: 'IMAGE',
+                  originalFileName: 'x.heic',
+                  originalMimeType: 'image/heic',
+                },
+              ],
+              nextPage: '2',
+            },
+          })
+        );
+      } else if (req.url.startsWith('/api/assets/abc1/')) {
+        res.setHeader('content-type', 'image/jpeg');
+        res.end(Buffer.from([0xff, 0xd8]));
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+    await new Promise(r => immich.listen(0, '127.0.0.1', r));
+    const server = `http://127.0.0.1:${immich.address().port}`;
+    try {
+      const configure = apiKey =>
+        http(port, {
+          method: 'POST',
+          path: `/${helper.token}/api/immich/config`,
+          headers: json,
+          body: { url: `${server}/api/`, apiKey },
+        });
+      const bad = await configure('wrong');
+      assert.equal(bad.status, 400);
+      assert.equal(JSON.parse(bad.text).error.code, 'BAD_KEY');
+      const good = await configure('secret-key');
+      assert.equal(good.status, 200);
+      assert.deepEqual(JSON.parse(good.text), { connected: true, url: server });
+      const status = await http(port, {
+        path: `/${helper.token}/api/immich/status`,
+      });
+      assert.ok(!status.text.includes('secret-key'));
+      const recent = await http(port, {
+        path: `/${helper.token}/api/immich/recent?page=1`,
+      });
+      const { items, nextPage } = JSON.parse(recent.text);
+      assert.equal(items[0].id, 'abc1');
+      assert.equal(nextPage, 2);
+      const original = await http(port, {
+        path: `/${helper.token}/api/immich/original?id=abc1&mimeType=image%2Fheic`,
+      });
+      assert.equal(original.status, 200);
+      assert.equal(seen.at(-1).url, '/api/assets/abc1/thumbnail?size=preview');
+      const bogus = await http(port, {
+        path: `/${helper.token}/api/immich/original?id=..%2Fx`,
+      });
+      assert.equal(bogus.status, 404);
+      await http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/immich/config`,
+        headers: json,
+        body: { url: '', apiKey: '' },
+      });
+      const off = await http(port, {
+        path: `/${helper.token}/api/immich/status`,
+      });
+      assert.equal(JSON.parse(off.text).connected, false);
+    } finally {
+      immich.close();
+    }
+  });
+
+  it("serves your own photo for someone over Signal's", async () => {
+    const photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const post = body =>
+      http(port, {
+        method: 'POST',
+        path: `/${helper.token}/api/customPhoto?conversationId=${alice.id}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        body,
+      });
+    const set = await post(photo);
+    assert.equal(set.status, 200);
+    const { versions } = JSON.parse(set.text);
+    assert.ok(versions[alice.id]);
+    const listed = await http(port, {
+      path: `/${helper.token}/api/customPhotos`,
+    });
+    assert.deepEqual(JSON.parse(listed.text).versions, versions);
+    const served = await http(port, {
+      path: `/${helper.token}/api/avatar?conversationId=${alice.id}&v=custom-${versions[alice.id]}`,
+    });
+    assert.equal(served.status, 200);
+    assert.equal(served.headers['content-type'], 'image/jpeg');
+    assert.match(served.headers['cache-control'] ?? '', /immutable/);
+    const removed = await post(Buffer.alloc(0));
+    assert.deepEqual(JSON.parse(removed.text).versions, {});
+    assert.equal((await post(Buffer.alloc(3 * 1024 * 1024))).status, 413);
+  });
+
   it('sends a contact card with the phone number, nothing private', async () => {
     const sent = await http(port, {
       method: 'POST',
@@ -1610,5 +1808,39 @@ describe('contact photo refresh', () => {
     await offline.daily();
     assert.equal(calls, 1);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('reminders', () => {
+  it('fires a due reminder once and remembers it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bc-rem-'));
+    let now = 1_000_000;
+    const due = [];
+    const file = join(dir, 'reminders.json');
+    const r = new Reminders(file, {
+      onDue: item => due.push(item),
+      now: () => now,
+    });
+    r.add({
+      conversationId: 'c',
+      messageId: 'm',
+      at: now + 1000,
+      preview: 'x',
+    });
+    r.start();
+    assert.equal(due.length, 0);
+    now += 2000;
+    r.start();
+    r.start();
+    r.stop();
+    assert.equal(due.length, 1);
+    const again = new Reminders(file, {
+      onDue: item => due.push(item),
+      now: () => now,
+    });
+    again.start();
+    again.stop();
+    assert.equal(due.length, 1);
+    assert.equal(again.list()[0].due, true);
   });
 });

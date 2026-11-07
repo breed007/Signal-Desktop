@@ -1227,6 +1227,15 @@ const conversationChangeSchema = z.discriminatedUnion('action', [
     action: z.literal('photoSource'),
     value: z.enum(['auto', 'contact', 'profile']),
   }),
+  // Fork addition (decision F46): Signal's "Nickname" dialog, with its byte
+  // limits (the page also keeps its grapheme limits). Synced to your phone
+  // and other devices as Signal's own dialog does. Empty clears.
+  z.object({
+    action: z.literal('nickname'),
+    givenName: z.string().max(128),
+    familyName: z.string().max(128),
+    note: z.string().max(240),
+  }),
 ]);
 
 export const conversationsUpdateParamsSchema = z
@@ -1263,6 +1272,9 @@ export type ConversationDetailsDTO = Readonly<{
   // Direct chats. Null when Signal has nothing to show.
   profileName: string | null;
   nickname: string | null;
+  // Fork addition (decision F46): the two parts, for editing.
+  nicknameGivenName: string | null;
+  nicknameFamilyName: string | null;
   note: string | null;
   // With its emoji, as Signal writes it.
   about: string | null;

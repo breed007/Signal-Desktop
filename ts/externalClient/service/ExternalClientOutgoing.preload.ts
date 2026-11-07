@@ -27,7 +27,7 @@ import type {
 import { DurationInSeconds } from '../../util/durations/index.std.ts';
 import {
   getAttachmentSizeLimit,
-  isAttachmentTooLargeToSend,
+  isAttachmentTooLarge,
 } from '../../types/AttachmentSize.std.ts';
 import * as Errors from '../../types/errors.std.ts';
 import { isDraftForwardable } from '../../types/ForwardDraft.std.ts';
@@ -126,7 +126,7 @@ export function beginUpload({
     contentType: stringToMIMEType(contentType),
     getRemoteConfigValue,
   });
-  if (isAttachmentTooLargeToSend({ plaintextSize: size, limit })) {
+  if (isAttachmentTooLarge({ plaintextSize: size, ciphertextLimit: limit })) {
     return {
       ok: false,
       code: ErrorCode.PreconditionFailed,

@@ -24,8 +24,18 @@ import SealedSenderMultiRecipientMessage from '@signalapp/libsignal-client/dist/
 import { Message } from '../data/schemas';
 import type { Device } from '../data/device';
 
-import { DeviceId, RegistrationId, ServiceIdString } from '../types';
-import { $services, org, signalservice as Proto } from '../../protos/compiled';
+import {
+  DeviceId,
+  RegistrationId,
+  ServiceIdKind,
+  ServiceIdString,
+} from '../types';
+import {
+  $services,
+  google,
+  org,
+  signalservice as Proto,
+} from '../../protos/compiled';
 import {
   AttachmentUploadForm,
   BackupAuthError,
@@ -84,9 +94,63 @@ function toServiceIdentifier(
 // gRPC status codes used by the mock.
 const GRPC_STATUS_OK = 0;
 const GRPC_STATUS_UNKNOWN = 2;
+const GRPC_STATUS_ABORTED = 10;
+const GRPC_STATUS_UNIMPLEMENTED = 12;
 const GRPC_STATUS_UNAUTHENTICATED = 16;
 
+// The domain the chat server uses for `google.rpc.ErrorInfo` details
+// Note: libsignal only looks at the error reason when the domain matches
+const SIGNAL_ERROR_INFO_DOMAIN = 'grpc.chat.signal.org';
+
+// For BackupsAnonymous/ListMedia
+const DEFAULT_LIST_MEDIA_LIMIT = 1000;
+
 class GrpcAuthError extends Error {}
+
+class GrpcStatusError extends Error {
+  constructor(
+    public readonly code: number,
+    message: string,
+    public readonly details: Uint8Array<ArrayBuffer> | null = null,
+  ) {
+    super(message);
+  }
+}
+
+function packAny(
+  typeName: string,
+  value: Uint8Array<ArrayBuffer>,
+): google.protobuf.Any.Params {
+  return { typeUrl: `type.googleapis.com/${typeName}`, value };
+}
+
+function signalStatusError(
+  code: number,
+  reason: string,
+  extraDetails: ReadonlyArray<google.protobuf.Any.Params> = [],
+): GrpcStatusError {
+  const errorInfo = google.rpc.ErrorInfo.encode({
+    reason,
+    domain: SIGNAL_ERROR_INFO_DOMAIN,
+    metadata: null,
+  });
+  const status = google.rpc.Status.encode({
+    code,
+    message: reason,
+    details: [...extraDetails, packAny('google.rpc.ErrorInfo', errorInfo)],
+  });
+  return new GrpcStatusError(code, reason, status);
+}
+
+// Backup media stream error when the backup auth credential presentation is rejected
+function backupStreamClosedAuthError(description: string): GrpcStatusError {
+  const closed = org.signal.chat.backup.BackupStreamClosed.encode({
+    reason: { failedAuthentication: { description } },
+  });
+  return signalStatusError(GRPC_STATUS_ABORTED, 'STREAM_CLOSED', [
+    packAny('org.signal.chat.backup.BackupStreamClosed', closed),
+  ]);
+}
 
 // A gRPC response over HTTP/2 always uses HTTP status 200; the actual gRPC
 // status code is carried in the trailing HEADERS frame (`grpc-status`). `micro`
@@ -98,6 +162,7 @@ function sendGrpcResponse(
   body: Buffer,
   status: number,
   message?: string,
+  details?: Uint8Array<ArrayBuffer> | null,
 ): void {
   const trailers: Record<string, string> = {
     'grpc-status': String(status),
@@ -105,6 +170,10 @@ function sendGrpcResponse(
   if (message !== undefined) {
     // Per the gRPC spec, `grpc-message` is percent-encoded.
     trailers['grpc-message'] = encodeURIComponent(message);
+  }
+  if (details != null) {
+    trailers['grpc-status-details-bin'] =
+      Buffer.from(details).toString('base64');
   }
 
   res.writeHead(200, { 'content-type': 'application/grpc' });
@@ -193,13 +262,24 @@ export const createHandler = (server: Server): RequestHandler => {
         sendGrpcResponse(res, Buffer.concat([header, data]), GRPC_STATUS_OK);
       } catch (error) {
         debug('gRPC handler error for %s', endpoint, error);
+        let status: number;
+        let details: Uint8Array<ArrayBuffer> | null;
+        if (error instanceof GrpcStatusError) {
+          status = error.code;
+          details = error.details;
+        } else if (error instanceof GrpcAuthError) {
+          status = GRPC_STATUS_UNAUTHENTICATED;
+          details = null;
+        } else {
+          status = GRPC_STATUS_UNKNOWN;
+          details = null;
+        }
         sendGrpcResponse(
           res,
           Buffer.alloc(0),
-          error instanceof GrpcAuthError
-            ? GRPC_STATUS_UNAUTHENTICATED
-            : GRPC_STATUS_UNKNOWN,
+          status,
           error instanceof Error ? error.message : String(error),
+          details,
         );
       }
     });
@@ -655,7 +735,8 @@ export const createHandler = (server: Server): RequestHandler => {
                 cdn: item.sourceAttachmentCdn,
                 key: item.sourceKey,
               },
-              objectLength: item.objectLength,
+              // Casting from bigint since we need to send this as JSON later
+              objectLength: Number(item.objectLength),
               mediaId: toURLSafeBase64(item.mediaId),
               hmacKey: Buffer.from(item.hmacKey),
               encryptionKey: Buffer.from(item.encryptionKey),
@@ -664,10 +745,7 @@ export const createHandler = (server: Server): RequestHandler => {
         });
       } catch (error) {
         if (error instanceof BackupAuthError) {
-          return {
-            mediaId: null,
-            response: { failedAuthentication: { description: error.message } },
-          };
+          throw backupStreamClosedAuthError(error.message);
         }
         throw error;
       }
@@ -699,13 +777,13 @@ export const createHandler = (server: Server): RequestHandler => {
     'org.signal.chat.backup.BackupsAnonymous/ListMedia',
     async ({ signedPresentation, cursor, limit }) => {
       assert(signedPresentation != null);
-      assert(limit > 0, 'Missing or invalid limit');
+      assert(limit == null || limit > 0, 'Invalid limit');
 
       let list: BackupMediaList;
       try {
         list = await server.listBackupMedia(signedPresentation, {
           cursor: cursor ?? undefined,
-          limit,
+          limit: limit ?? DEFAULT_LIST_MEDIA_LIMIT,
         });
       } catch (error) {
         if (error instanceof BackupAuthError) {
@@ -731,6 +809,18 @@ export const createHandler = (server: Server): RequestHandler => {
             cursor: list.cursor ?? null,
           },
         },
+      };
+    },
+  );
+
+  const onGetPreKeyCount = authenticatedGrpcRoute(
+    'org.signal.chat.keys.Keys/GetPreKeyCount',
+    async (_body, device) => {
+      return {
+        aciEcPreKeyCount: await device.getPreKeyCount(ServiceIdKind.ACI),
+        aciKemPreKeyCount: await device.getKyberPreKeyCount(ServiceIdKind.ACI),
+        pniEcPreKeyCount: await device.getPreKeyCount(ServiceIdKind.PNI),
+        pniKemPreKeyCount: await device.getKyberPreKeyCount(ServiceIdKind.PNI),
       };
     },
   );
@@ -807,14 +897,14 @@ export const createHandler = (server: Server): RequestHandler => {
     },
   );
 
-  const notFoundAfterAuth: RouteHandler = async (req, res) => {
-    const device = await auth(server, req);
-    if (!device) {
-      return sendRaw(res, 401, { error: 'Not authorized' });
-    }
+  const unimplemented: RouteHandler = async (req, res) => {
+    const endpoint = req.params._ ?? '';
+    const message = Object.hasOwn($services, endpoint)
+      ? `Mock server does not implement ${endpoint}`
+      : `Method not found: ${endpoint}`;
 
     debug('Unsupported request %s %s', req.method, req.url);
-    return sendRaw(res, 404, { error: 'Not supported yet' });
+    sendGrpcResponse(res, Buffer.alloc(0), GRPC_STATUS_UNIMPLEMENTED, message);
   };
 
   const routes = router(
@@ -829,6 +919,7 @@ export const createHandler = (server: Server): RequestHandler => {
     onConfirmUsername,
     onDeleteUsername,
     onSetUsernameLink,
+    onGetPreKeyCount,
     onSetBackupPublicKey,
     onRefreshBackup,
     onGetBackupCdnCredentials,
@@ -838,7 +929,7 @@ export const createHandler = (server: Server): RequestHandler => {
     onCopyBackupMedia,
     onListBackupMedia,
 
-    ...ALL_METHODS.map((method) => method('/*', notFoundAfterAuth)),
+    ...ALL_METHODS.map((method) => method('/*', unimplemented)),
   );
 
   return (req, res) => {

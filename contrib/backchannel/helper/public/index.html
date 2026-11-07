@@ -50,6 +50,13 @@
             <button
               type="button"
               class="icon-button"
+              id="starred-open"
+              title="Starred messages"
+              aria-label="Starred messages"
+            ></button>
+            <button
+              type="button"
+              class="icon-button"
               id="settings-open"
               title="Settings"
               aria-label="Settings"
@@ -151,6 +158,13 @@
           <button
             type="button"
             class="icon-button"
+            id="immich-open"
+            title="Immich"
+            aria-label="Immich"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
             id="sticker-open"
             title="Stickers"
             aria-label="Stickers"
@@ -226,6 +240,7 @@
       hidden
     ></div>
     <div class="toast" id="toast" role="status" hidden></div>
+    <div class="reminders" id="reminders" aria-live="polite"></div>
     <div class="modal-backdrop" id="gallery" hidden>
       <div
         class="modal gallery-modal"
@@ -319,6 +334,57 @@
           spellcheck="false"
         />
         <ul class="forward-list" id="block-chooser-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="starred" hidden>
+      <div class="modal" role="dialog" aria-labelledby="starred-title">
+        <div class="modal-head">
+          <span id="starred-title">Starred messages</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="starred-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <ul class="forward-list starred-list" id="starred-list"></ul>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="immich" hidden>
+      <div
+        class="modal immich-modal"
+        role="dialog"
+        aria-labelledby="immich-title"
+      >
+        <div class="modal-head">
+          <span id="immich-title">Immich</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="immich-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="immich-tabs" id="immich-tabs"></div>
+        <div class="immich-body" id="immich-body"></div>
+        <div class="details-actions immich-foot" id="immich-foot"></div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="whats-new" hidden>
+      <div class="modal" role="dialog" aria-labelledby="whats-new-title">
+        <div class="modal-head">
+          <span id="whats-new-title">What's new in Backchannel</span>
+          <button
+            type="button"
+            class="icon-button"
+            id="whats-new-close"
+            title="Close"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="whats-new-list" id="whats-new-list"></div>
       </div>
     </div>
     <div class="modal-backdrop" id="contact-chooser" hidden>
@@ -567,6 +633,14 @@
           aria-label="Show in chat"
           hidden
         ></button>
+        <button
+          type="button"
+          class="icon-button"
+          id="lightbox-reply"
+          title="Reply to this photo"
+          aria-label="Reply to this photo"
+          hidden
+        ></button>
         <a
           class="icon-button"
           id="lightbox-save"
@@ -598,6 +672,51 @@
           aria-label="Next"
         ></button>
       </div>
+      <form class="lightbox-reply" id="lightbox-reply-form" hidden>
+        <div
+          class="lightbox-reply-extras"
+          id="lightbox-reply-extras"
+          hidden
+        ></div>
+        <div class="lightbox-reply-row">
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-attach"
+            title="Add a photo, GIF or file"
+            aria-label="Add a photo, GIF or file"
+          ></button>
+          <input id="lightbox-reply-input" type="file" multiple hidden />
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-immich"
+            title="Immich"
+            aria-label="Immich"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-sticker"
+            title="Stickers"
+            aria-label="Stickers"
+          ></button>
+          <button
+            type="button"
+            class="icon-button"
+            id="lightbox-reply-emoji"
+            title="Emoji"
+            aria-label="Emoji"
+          ></button>
+          <input
+            type="text"
+            id="lightbox-reply-text"
+            placeholder="Comment on this photo"
+            autocomplete="off"
+          />
+          <button type="submit" class="setting-button primary">Send</button>
+        </div>
+      </form>
       <div class="lightbox-caption" id="lightbox-caption"></div>
       <div class="lightbox-strip" id="lightbox-strip" hidden></div>
     </div>

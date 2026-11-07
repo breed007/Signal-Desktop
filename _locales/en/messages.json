@@ -415,6 +415,14 @@
     "messageformat": "More actions",
     "description": "Label for context button next to each message"
   },
+  "icu:messageContextMenu__sticker--addFavorite": {
+    "messageformat": "Add to Favorites",
+    "description": "Context menu label and button tooltip for each sticker message, which lets you add the sticker to your favorites"
+  },
+  "icu:messageContextMenu__sticker--removeFavorite": {
+    "messageformat": "Remove from Favorites",
+    "description": "Context menu label and button tooltip for each sticker message, which lets you remove a sticker from your favorites"
+  },
   "icu:contextMenuCopyLink": {
     "messageformat": "Copy Link",
     "description": "Shown in the context menu for a link to indicate that the user can copy the link"
@@ -1099,6 +1107,10 @@
   "icu:videoFileTooLargeWarning": {
     "messageformat": "Can’t send this video file because it’s too large. You can send video files up to {limit, number}{units}.",
     "description": "Shown in a toast if the user tries to attach a video file that is too large to send"
+  },
+  "icu:videoFileTooLongWarning": {
+    "messageformat": "Cannot send video because it is longer than {maxDuration}",
+    "description": "Shown in a toast if the user tries to attach a video file that is too long to send"
   },
   "icu:unableToLoadAttachment": {
     "messageformat": "Unable to load selected attachment."
@@ -2473,6 +2485,18 @@
   "icu:Preferences__EditChatFolderPage__CancelButton": {
     "messageformat": "Cancel",
     "description": "Preferences > Edit Chat Folder Page > Cancel Button"
+  },
+  "icu:Preferences__PrivacyPage__SealedSender": {
+    "messageformat": "Sealed Sender",
+    "description": "Preferences > Privacy Page > Sealed Sender section header"
+  },
+  "icu:Preferences__PrivacyPage__AllowFromAnyone__Label": {
+    "messageformat": "Allow from Anyone",
+    "description": "Preferences > Privacy Page > Allow From Anyone Checkbox > Label"
+  },
+  "icu:Preferences__PrivacyPage__AllowFromAnyone__Description": {
+    "messageformat": "Enable sealed sender for incoming messages from non-contacts and people with whom you have not shared your profile. <learnMoreLink>Learn more</learnMoreLink>.",
+    "description": "Preferences > Privacy Page > Allow From Anyone Checkbox > Description"
   },
   "icu:Preferences__PrivacyPage__ShowStatusIcon__Label": {
     "messageformat": "Show status icon",
@@ -4086,6 +4110,14 @@
     "messageformat": "No stickers found",
     "description": "FunPicker > Stickers Panel > Search Results > Empty State > Heading"
   },
+  "icu:FunPanelStickers__StickerContextMenu--AddFavorite": {
+    "messageformat": "Add to Favorites",
+    "description": "FunPicker > Stickers Panel > Sticker Context Menu (right click a sticker to open menu) > Add to favorite stickers"
+  },
+  "icu:FunPanelStickers__StickerContextMenu--RemoveFavorite": {
+    "messageformat": "Remove from Favorites",
+    "description": "FunPicker > Stickers Panel > Sticker Context Menu (right click a sticker to open menu) > Remove from favorite stickers"
+  },
   "icu:FunPanelStickers__LightboxDialog__Label": {
     "messageformat": "Sticker Preview",
     "description": "FunPicker > Stickers Panel > Lightbox Dialog (long press on sticker to see large preview) > Label"
@@ -4161,10 +4193,6 @@
   "icu:FunPanelGifs__GiphyAttribution__AccessibilityLabel": {
     "messageformat": "Powered by GIPHY",
     "description": "FunPicker > GIFs Panel > Giphy Attribution (Must use brand name 'GIPHY' in all caps)"
-  },
-  "icu:FunSearch__ClearButtonLabel": {
-    "messageformat": "Clear Search",
-    "description": "(Deleted 2026/10/01) FunPicker > Search Field > Clear Search Button > Accessibility Label"
   },
   "icu:FunSkinTones__List": {
     "messageformat": "Skin tone",
@@ -8644,10 +8672,6 @@
     "messageformat": "PIN reminders",
     "description": "Header for Signal PIN reminders setting"
   },
-  "icu:Preferences--pin-reminders--description": {
-    "messageformat": "You'll be asked less frequently over time",
-    "description": "(Deleted 2026/10/01) Description for Signal PIN reminders setting"
-  },
   "icu:Preferences--registration-lock__label": {
     "messageformat": "Registration Lock",
     "description": "Label for Registration Lock settings"
@@ -12527,10 +12551,10 @@
   },
   "icu:WhatsNew__8.34--0": {
     "messageformat": "Signal Desktop now supports contact sharing too, so you can maintain eye contact with your computer screen without having to make physical contact with your smartphone.",
-    "description": "Release notes for 8.34"
+    "description": "(Deleted 2026/11/05) Release notes for 8.34"
   },
   "icu:WhatsNew__8.34--1": {
     "messageformat": "Improved handling and performance for connected audio devices.",
-    "description": "Release notes for 8.34"
+    "description": "(Deleted 2026/11/05) Release notes for 8.34"
   }
 }

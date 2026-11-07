@@ -164,7 +164,9 @@ const ICONS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM16 16l4.5 4.5',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
   poll: 'M5 20V11M12 20V4M19 20v-6',
-  contact: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
+  contact:
+    'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20c.7-3.5 3.7-5.5 7.5-5.5s6.8 2 7.5 5.5',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
   back: 'M15 5l-7 7 7 7',
@@ -239,6 +241,35 @@ function colorFor(id, avatarColor) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+// conversationId -> version of the photo you set for them (decision F44).
+let customPhotoVersions = {};
+
+async function loadCustomPhotos() {
+  try {
+    const { versions } = await api('api/customPhotos');
+    setCustomPhotos(versions);
+  } catch {
+    // Signal's photos still show.
+  }
+}
+
+function setCustomPhotos(versions) {
+  const before = JSON.stringify(customPhotoVersions);
+  customPhotoVersions =
+    versions && typeof versions === 'object' ? versions : {};
+  if (JSON.stringify(customPhotoVersions) === before) {
+    return;
+  }
+  messageCache.clear();
+  renderConversations();
+  renderTitle();
+  if (selectedId) {
+    renderChatHeader();
+    renderMessages();
+    refreshDetailsSoon(selectedId);
+  }
+}
+
 // who: { title, avatarColor, avatarVersion }; kind: 'direct' | 'group' | 'me'
 function avatar(id, who, size, kind = 'direct') {
   const box = el(
@@ -256,7 +287,10 @@ function avatar(id, who, size, kind = 'direct') {
     }
   };
   fallback();
-  if (who.avatarVersion) {
+  // Your own photo for them beats Signal's (decision F44).
+  const custom = customPhotoVersions[id];
+  const version = custom ? `custom-${custom}` : who.avatarVersion;
+  if (version) {
     // In the DOM from the start so lazy loading can see it; shown over the
     // initials once loaded.
     const img = el('img', 'photo');
@@ -268,7 +302,7 @@ function avatar(id, who, size, kind = 'direct') {
     box.append(img);
     const params = new URLSearchParams({
       conversationId: id,
-      v: who.avatarVersion,
+      v: version,
     });
     img.src = `api/avatar?${params}`;
   }
@@ -1933,6 +1967,7 @@ function openLightbox(m, index) {
     gallery: null,
   };
   $('lightbox-goto').hidden = true;
+  closePhotoReply();
   renderLightboxStrip();
   showLightboxItem();
   $('lightbox').hidden = false;
@@ -1959,6 +1994,7 @@ function showLightboxItem() {
   $('lightbox-caption').textContent = a.caption ?? '';
   $('lightbox-save').href = attachmentUrl(m, index, a, { download: '1' });
   $('lightbox-save').download = a.fileName ?? 'attachment';
+  $('lightbox-reply').hidden = !canSend() || !m.conversationId;
   const several = items.length > 1;
   $('lightbox-count').textContent = several
     ? `${pos + 1} of ${items.length}`
@@ -2023,8 +2059,139 @@ function stepLightbox(delta) {
   showLightboxItem();
 }
 
+// Reply to one photo of an album (decision F47), as Backchannel Android
+// bc9: a new message quoting the original, carrying that photo again (a
+// quote alone shows the album's first photo on phones), with a comment as
+// its text. No emoji row (Mike, 2026-11-06). Like any reply it can also
+// carry photos, GIFs and files of your own (they go after the photo, in the
+// same message), or a sticker (decision F53).
+let photoReplyFiles = [];
+
+function openPhotoReply() {
+  const form = $('lightbox-reply-form');
+  if (!form.hidden) {
+    closePhotoReply();
+    return;
+  }
+  form.hidden = false;
+  $('lightbox-reply-text').value = '';
+  setPhotoReplyFiles([]);
+  $('lightbox-reply-text').focus();
+}
+
+function closePhotoReply() {
+  $('lightbox-reply-form').hidden = true;
+  setPhotoReplyFiles([]);
+}
+
+function addPhotoReplyFiles(fileList) {
+  const list = [...photoReplyFiles];
+  for (const file of fileList) {
+    // The photo you're replying to takes one place.
+    if (list.length >= MAX_DRAFTS - 1) {
+      toast(`Up to ${MAX_DRAFTS - 1} at a time.`);
+      break;
+    }
+    list.push({
+      file,
+      url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+    });
+  }
+  setPhotoReplyFiles(list);
+  $('lightbox-reply-text').focus();
+}
+
+function setPhotoReplyFiles(list) {
+  for (const old of photoReplyFiles) {
+    if (old.url && !list.includes(old)) {
+      URL.revokeObjectURL(old.url);
+    }
+  }
+  photoReplyFiles = list;
+  const box = $('lightbox-reply-extras');
+  box.hidden = list.length === 0;
+  box.replaceChildren(
+    ...list.map(draft => {
+      const chip = el('div', 'lightbox-reply-extra');
+      if (draft.url) {
+        const img = el('img');
+        img.src = draft.url;
+        img.alt = draft.file.name;
+        chip.append(img);
+      } else {
+        chip.append(el('span', 'lightbox-reply-extra-name', draft.file.name));
+      }
+      const remove = el('button', 'lightbox-reply-extra-remove', '×');
+      remove.type = 'button';
+      remove.title = 'Remove';
+      remove.setAttribute('aria-label', `Remove ${draft.file.name}`);
+      remove.addEventListener('click', () =>
+        setPhotoReplyFiles(photoReplyFiles.filter(d => d !== draft))
+      );
+      chip.append(remove);
+      return chip;
+    })
+  );
+}
+
+// Sends the photo with the comment and any added files, quoting the
+// original. Returns the sent message, or null.
+async function sendPhotoReplyMessage(text) {
+  const { m, items, pos } = lightbox;
+  const index = items[pos];
+  const a = m.attachments[index];
+  const res = await fetch(attachmentUrl(m, index, a));
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const photo = new File([blob], a.fileName ?? 'photo', {
+    type: a.contentType || blob.type,
+  });
+  const attachmentUploadIds = [];
+  for (const file of [photo, ...photoReplyFiles.map(d => d.file)]) {
+    // oxlint-disable-next-line no-await-in-loop
+    attachmentUploadIds.push(await uploadFile(file));
+  }
+  const { message } = await api('api/send', {
+    conversationId: m.conversationId,
+    body: text.trim(),
+    attachmentUploadIds,
+    quoteMessageId: m.id,
+  });
+  return message ?? null;
+}
+
+async function sendPhotoReply(text, sticker = null) {
+  if (!lightbox || (!text.trim() && photoReplyFiles.length === 0 && !sticker)) {
+    return;
+  }
+  const form = $('lightbox-reply-form');
+  form.classList.add('busy');
+  try {
+    const sent = await sendPhotoReplyMessage(text);
+    // A sticker can't carry the photo, so it follows as a reply to the
+    // message that does: phones then show the right photo in its quote.
+    if (sticker) {
+      await api('api/sendSticker', {
+        conversationId: lightbox?.m.conversationId ?? sent?.conversationId,
+        packId: sticker.packId,
+        stickerId: sticker.stickerId,
+        ...(sent?.id ? { quoteMessageId: sent.id } : {}),
+      });
+    }
+    closePhotoReply();
+    toast('Reply sent.');
+  } catch (error) {
+    toast(`Not sent (${error.code ?? error.message}).`);
+  } finally {
+    form.classList.remove('busy');
+  }
+}
+
 function closeLightbox() {
   lightbox = null;
+  closePhotoReply();
   $('lightbox').hidden = true;
   $('lightbox-stage').replaceChildren();
   $('lightbox-strip').replaceChildren();
@@ -2264,6 +2431,10 @@ const STYLE_CLASS = {
 
 // Splits the body at every range edge and styles each piece, as Signal's
 // own renderer does.
+// A list line as Signal sends one: bullets, numbers, the plain dash.
+const LIST_PREFIX = /^[\u2003\t ]*(?:[•◦▪*-]|\d+[.)])(?: [☐☑])? (?=\S)/;
+const LIST_LINE = /(?:^|\n)[\u2003\t ]*(?:[•◦▪*-]|\d+[.)]) \S/;
+
 function renderBody(m) {
   const body = el('span', 'body');
   if (isJumboBody(m)) {
@@ -2277,10 +2448,44 @@ function renderBody(m) {
     edges.add(Math.max(0, Math.min(text.length, r.start)));
     edges.add(Math.max(0, Math.min(text.length, r.start + r.length)));
   }
+  // Lists get hanging indents (decision F42), so each line is its own
+  // block; pieces are cut at line ends for that.
+  const listed = LIST_LINE.test(text);
+  if (listed) {
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) {
+      edges.add(i);
+      edges.add(i + 1);
+    }
+  }
+  const lines = [];
+  const newLine = lineStart => {
+    const line = el('span', 'body-line');
+    const prefix = LIST_PREFIX.exec(text.slice(lineStart));
+    if (prefix) {
+      // Wrapped lines start under the text, not under the number or bullet.
+      // Widths in em of the page's font, near enough for the indent.
+      let width = 0;
+      for (const ch of prefix[0]) {
+        width +=
+          { '\u2003': 1, '\t': 2, ' ': 0.28, '.': 0.28, ')': 0.33 }[ch] ??
+          (/\d/.test(ch) ? 0.62 : 0.55);
+      }
+      line.classList.add('list-line');
+      line.style.setProperty('--hang', `${width.toFixed(2)}em`);
+    }
+    lines.push(line);
+    body.append(line);
+    return line;
+  };
+  let target = listed ? newLine(0) : body;
   const points = [...edges].sort((a, b) => a - b);
   for (let i = 0; i < points.length - 1; i += 1) {
     const start = points[i];
     const end = points[i + 1];
+    if (listed && text[start] === '\n' && end === start + 1) {
+      target = newLine(end);
+      continue;
+    }
     const styles = formatting
       .filter(r => r.start <= start && r.start + r.length >= end)
       .map(r => STYLE_CLASS[r.style])
@@ -2288,7 +2493,7 @@ function renderBody(m) {
     const mention = mentions.find(
       r => r.start <= start && r.start + r.length >= end
     );
-    let node = body;
+    let node = target;
     if (styles.length > 0) {
       node = el('span', styles.join(' '));
       if (styles.includes('f-spoiler')) {
@@ -2298,7 +2503,7 @@ function renderBody(m) {
           node.classList.add('revealed');
         });
       }
-      body.append(node);
+      target.append(node);
     }
     if (mention) {
       // One mention may span several pieces; write it once.
@@ -2403,6 +2608,27 @@ function renderMessage(m, prev, next) {
     m.attachments.length === 0 &&
     isJumbo(m.body);
   const bubble = el('span', `bubble${jumbo ? ' jumbo' : ''}`);
+  // As Backchannel Android: double-click reacts with your first reaction,
+  // and again takes it back.
+  if (canReact() && canReplyTo(m)) {
+    bubble.addEventListener('mousedown', e => {
+      if (e.detail > 1 && !e.target.closest('a, button, video, audio, input')) {
+        e.preventDefault();
+      }
+    });
+    bubble.addEventListener('dblclick', async e => {
+      if (e.target.closest('a, button, video, audio, input, .media')) {
+        return;
+      }
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      const [first] = await getPreferredReactions();
+      if (first) {
+        const mine = m.reactions.find(r => r.fromMe)?.emoji;
+        sendReaction(m, first, mine === first);
+      }
+    });
+  }
 
   if (!outgoing && isGroupChat && firstOfRun) {
     const name = nameLine(nameOf(m.authorConversationId), m.author, 'author');
@@ -2441,9 +2667,23 @@ function renderMessage(m, prev, next) {
       body.append(' …');
     }
     bubble.append(body);
+    const translated = translations.get(m.id);
+    if (translated) {
+      const box = el('div', 'translation');
+      box.append(
+        el('span', 'translation-label', `Translated from ${translated.from}`),
+        el('span', 'translation-text', translated.text)
+      );
+      bubble.append(box);
+    }
   }
 
   const meta = el('span', 'meta');
+  if (starredIds.has(m.id)) {
+    const star = icon('star');
+    star.classList.add('star-mark');
+    meta.append(star);
+  }
   meta.append(formatTime(m.sentAt));
   if (m.edited) {
     // As in Signal, "Edited" opens the earlier versions (decision F39).
@@ -2497,6 +2737,8 @@ function cachedMessage(m, prev, next) {
     next?.sentAt,
     capabilities,
     formatTime(m.sentAt),
+    starredIds.has(m.id),
+    translations.get(m.id)?.text,
   ]);
   const cached = messageCache.get(m.id);
   if (cached && cached.key === key) {
@@ -2854,6 +3096,7 @@ function openChatMenu(conversationId, anchor, page = null) {
       );
       add('search', 'Search in chat', () => startChatSearch(c.id));
       add('media', 'All media', () => openGallery(c.id));
+      add('star', 'Starred messages', () => openStarred(c.id));
       items.push(el('div', 'menu-separator'));
     }
     if (!blocked && !c.messageRequestPending) {
@@ -2940,7 +3183,41 @@ function confirmDelete(c) {
 }
 
 // Back to no chat open, as Signal after archiving or deleting one.
+// Set when a note arrives while Note to Self is open (F52).
+let noteToSelfPending = false;
+
+function markNoteToSelfUnread(conversationId) {
+  api('api/conversation', {
+    conversationId,
+    change: { action: 'markUnread' },
+  }).catch(() => {});
+}
+
+function leavingConversation() {
+  if (noteToSelfPending && conversations.get(selectedId)?.noteToSelf) {
+    markNoteToSelfUnread(selectedId);
+  }
+  noteToSelfPending = false;
+}
+
+// Closing the page while in Note to Self counts as leaving it.
+window.addEventListener('pagehide', () => {
+  if (noteToSelfPending && conversations.get(selectedId)?.noteToSelf) {
+    fetch('api/conversation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: selectedId,
+        change: { action: 'markUnread' },
+      }),
+      keepalive: true,
+    }).catch(() => {});
+    noteToSelfPending = false;
+  }
+});
+
 function closeConversation() {
+  leavingConversation();
   if (recording) {
     cancelRecording();
   }
@@ -3137,6 +3414,10 @@ function renderDetails(c, d) {
     body.replaceChildren(groupEditForm(c, d));
     return;
   }
+  if (d?.type === 'direct' && detailsEditing) {
+    body.replaceChildren(nicknameForm(c, d));
+    return;
+  }
   const scroll = body.scrollTop;
   const head = el('div', 'details-head');
   head.append(
@@ -3190,6 +3471,24 @@ function renderDetails(c, d) {
     }
     if (d.note) {
       rows.push(detailRow('note', d.note, 'Note'));
+    }
+    if (canManageChats() && !c.noteToSelf) {
+      // Signal's "Nickname" (decision F46): your own name for them, synced
+      // to your phone, with your own photo (F44) the web's way to link
+      // someone to a contact.
+      const actions = el('div', 'details-actions');
+      const edit = el(
+        'button',
+        'setting-button',
+        d.nickname || d.note ? 'Edit nickname and note' : 'Add nickname'
+      );
+      edit.type = 'button';
+      edit.addEventListener('click', () => {
+        detailsEditing = true;
+        renderDetails(c, d);
+      });
+      actions.append(edit);
+      rows.push(actions);
     }
     rows.push(...photoRows(c, d));
   } else {
@@ -3304,6 +3603,28 @@ function photoRows(c, d) {
     );
     select.setAttribute('aria-label', 'Which photo to show');
     actions.append(select);
+  }
+  if (c.type !== 'group' && !c.noteToSelf) {
+    const pick = el(
+      'button',
+      'setting-button',
+      customPhotoVersions[c.id]
+        ? 'Change your photo for them'
+        : 'Set your own photo'
+    );
+    pick.type = 'button';
+    pick.title =
+      "Only you see it. It beats their profile photo and your phone's.";
+    pick.addEventListener('click', () => pickCustomPhoto(c.id, pick));
+    actions.append(pick);
+    if (customPhotoVersions[c.id]) {
+      const clear = el('button', 'setting-button', 'Remove your photo');
+      clear.type = 'button';
+      clear.addEventListener('click', () =>
+        changeCustomPhoto(c.id, null, clear)
+      );
+      actions.append(clear);
+    }
   }
   if (canManageSettings()) {
     const sync = el('button', 'setting-button', 'Import photos from phone');
@@ -3836,6 +4157,76 @@ function groupEditForm(c, d) {
   return form;
 }
 
+// As Signal's EditNicknameAndNoteModal: first and last name, 26 characters
+// each, and a note of 240. Only you see them; they sync to your devices.
+function nicknameForm(c, d) {
+  const form = el('form', 'group-edit');
+  const field = (placeholder, value, max) => {
+    const input = el('input', 'setting-input');
+    input.type = 'text';
+    input.placeholder = placeholder;
+    input.value = value ?? '';
+    input.dataset.max = String(max);
+    return input;
+  };
+  const given = field('First name', d.nicknameGivenName, 26);
+  const family = field('Last name', d.nicknameFamilyName, 26);
+  const note = el('textarea', 'setting-input');
+  note.placeholder = 'Note';
+  note.rows = 3;
+  note.value = d.note ?? '';
+  note.dataset.max = '240';
+  const hint = el(
+    'p',
+    'setting-note',
+    'Only you see a nickname and note. They replace the name Signal shows for this person on all your devices.'
+  );
+  const save = el('button', 'setting-button primary', 'Save');
+  save.type = 'submit';
+  const cancel = el('button', 'setting-button', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => {
+    detailsEditing = false;
+    renderDetails(c, d);
+  });
+  const fields = [given, family, note];
+  const length = value => [...segmenter.segment(value.trim())].length;
+  const update = () => {
+    save.disabled = fields.some(f => length(f.value) > Number(f.dataset.max));
+  };
+  fields.forEach(f => f.addEventListener('input', update));
+  update();
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (save.disabled) {
+      return;
+    }
+    save.disabled = true;
+    try {
+      await api('api/conversation', {
+        conversationId: c.id,
+        change: {
+          action: 'nickname',
+          givenName: given.value.trim(),
+          familyName: family.value.trim(),
+          note: note.value.trim(),
+        },
+      });
+    } catch (error) {
+      toast(`Not saved (${error.code ?? error.message}).`);
+      update();
+      return;
+    }
+    detailsEditing = false;
+    openDetails(c.id, { refresh: true });
+  });
+  const foot = el('div', 'details-actions');
+  foot.append(cancel, save);
+  form.append(given, family, note, hint, foot);
+  setTimeout(() => given.focus());
+  return form;
+}
+
 function closeDetails() {
   detailsFor = null;
   $('details').hidden = true;
@@ -3892,6 +4283,7 @@ async function selectConversation(id) {
   if (id === selectedId) {
     return;
   }
+  leavingConversation();
   // A recording in progress stays with its chat as a draft.
   if (recording) {
     await stopRecording({ send: false });
@@ -3956,12 +4348,17 @@ async function selectConversation(id) {
   }
   renderTyping();
   focusCompose();
-  maybeMarkRead();
+  maybeMarkRead({ opened: true });
 }
 
 // Marks the open chat read in Signal, only while the user can see it.
-async function maybeMarkRead() {
+// Note to Self only when you open it (decision F52): a new note stays
+// unread until you leave and come back.
+async function maybeMarkRead({ opened = false } = {}) {
   const c = conversations.get(selectedId);
+  if (c?.noteToSelf && !opened) {
+    return;
+  }
   if (markReadInFlight) {
     markReadAgain = true;
     return;
@@ -3996,7 +4393,7 @@ async function maybeMarkRead() {
   }
   if (markReadAgain) {
     markReadAgain = false;
-    maybeMarkRead();
+    maybeMarkRead({ opened });
   }
 }
 
@@ -4389,10 +4786,10 @@ async function saveProfile() {
 }
 
 // As Signal's avatar editor: a centered square, at most 512 pixels.
-async function squarePhoto(file) {
+async function squarePhoto(file, max = 512) {
   const bitmap = await createImageBitmap(file);
   const side = Math.min(bitmap.width, bitmap.height);
-  const out = Math.min(side, 512);
+  const out = Math.min(side, max);
   const canvas = document.createElement('canvas');
   canvas.width = out;
   canvas.height = out;
@@ -4417,6 +4814,51 @@ async function squarePhoto(file) {
       0.9
     )
   );
+}
+
+function pickCustomPhoto(conversationId, button) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    let photo;
+    try {
+      photo = await squarePhoto(file, 640);
+    } catch {
+      toast("That file isn't a picture.");
+      return;
+    }
+    await changeCustomPhoto(conversationId, photo, button);
+  });
+  input.click();
+}
+
+// Your own photo for someone (decision F44). photo: a Blob, or null to remove.
+async function changeCustomPhoto(conversationId, photo, button) {
+  button.disabled = true;
+  try {
+    const res = await fetch(
+      `api/customPhoto?${new URLSearchParams({ conversationId })}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: photo ?? new Blob([]),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error?.code ?? res.status);
+    }
+    setCustomPhotos(data.versions);
+  } catch (error) {
+    toast(`Photo not changed (${error.message}).`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // photo: a Blob, or null to remove it.
@@ -4732,6 +5174,611 @@ function renderBlockChooser() {
   );
 }
 
+// --- starred messages (decision F43) -----------------------------------------
+
+// Kept by the helper: Signal Desktop has no star and stars never sync.
+let starredIds = new Set();
+
+async function loadStarredIds() {
+  try {
+    starredIds = new Set((await api('api/starIds')).ids);
+  } catch {
+    // Without the list, nothing shows as starred.
+  }
+}
+
+async function setStar(m, starred) {
+  try {
+    await api('api/star', {
+      messageId: m.id,
+      conversationId: m.conversationId,
+      starred,
+    });
+  } catch (error) {
+    toast(`Couldn't star (${error.code ?? error.message}).`);
+    return;
+  }
+  if (starred) {
+    starredIds.add(m.id);
+  } else {
+    starredIds.delete(m.id);
+  }
+  if (m.conversationId === selectedId && messages.has(m.id)) {
+    renderMessages();
+  }
+}
+
+// One chat's starred messages, or every chat's, newest star first.
+async function openStarred(conversationId = null) {
+  closePopovers();
+  const list = $('starred-list');
+  list.replaceChildren(el('li', 'sub', 'Loading…'));
+  $('starred-title').textContent = conversationId
+    ? `Starred in ${displayTitle(conversations.get(conversationId) ?? { title: 'this chat' })}`
+    : 'Starred messages';
+  $('starred').hidden = false;
+  let items = [];
+  try {
+    const query = conversationId
+      ? `?${new URLSearchParams({ conversationId })}`
+      : '';
+    ({ items } = await api(`api/stars${query}`));
+  } catch (error) {
+    list.replaceChildren(
+      el('li', 'sub', `Couldn't load (${error.code ?? error.message}).`)
+    );
+    return;
+  }
+  list.replaceChildren(
+    ...(items.length === 0
+      ? [el('li', 'sub', 'No starred messages. Star one from its ⋯ menu.')]
+      : items.map(({ message }) => starredRow(message)))
+  );
+}
+
+function starredRow(m) {
+  const c = conversations.get(m.conversationId);
+  const li = el('li', 'search-result');
+  const from =
+    m.direction === 'outgoing'
+      ? 'You'
+      : (m.author?.title ?? nameOf(m.authorConversationId));
+  const where = c ? displayTitle(c) : 'Unknown chat';
+  const title =
+    c?.type === 'group' ? `${from} in ${where}` : `${from} · ${where}`;
+  const text = el('span', 'row-text');
+  const top = el('span', 'row-top');
+  top.append(
+    el('span', 'title', title),
+    el('span', 'time', shortTime(m.sentAt))
+  );
+  text.append(top, el('span', 'preview', summarize(m)));
+  li.append(c ? conversationAvatar(c, 40) : el('span', 'avatar'), text);
+  li.addEventListener('click', () => {
+    closeStarred();
+    jumpToMessage(m);
+  });
+  return li;
+}
+
+function closeStarred() {
+  $('starred').hidden = true;
+}
+
+$('starred-open').append(icon('star'));
+$('starred-open').addEventListener('click', () => openStarred());
+$('starred-close').append(icon('close'));
+$('starred-close').addEventListener('click', closeStarred);
+$('starred').addEventListener('click', e => {
+  if (e.target === $('starred')) {
+    closeStarred();
+  }
+});
+loadStarredIds();
+loadCustomPhotos();
+loadKeywords();
+
+// --- Immich picker (decision F48) ------------------------------------------
+
+// As Backchannel Android bc9: browse your own Immich server's recent photos,
+// albums and smart search, and attach picks like any file. The helper talks
+// to Immich and keeps the API key; the page never sees it.
+let immichState = null;
+
+// onAttach: where the picked files go (the composer, or a photo reply).
+async function openImmich(onAttach = addDrafts) {
+  closePopovers();
+  if (!selectedId) {
+    return;
+  }
+  immichState = {
+    onAttach: typeof onAttach === 'function' ? onAttach : addDrafts,
+    conversationId: selectedId,
+    view: 'recent',
+    albumId: null,
+    albumName: null,
+    query: '',
+    items: [],
+    nextPage: null,
+    picked: new Map(),
+    status: null,
+  };
+  $('immich').hidden = false;
+  $('immich-body').replaceChildren(el('p', 'sub', 'Loading…'));
+  $('immich-tabs').replaceChildren();
+  $('immich-foot').replaceChildren();
+  try {
+    immichState.status = await api('api/immich/status');
+  } catch (error) {
+    immichState.status = { connected: false };
+  }
+  if (immichState.status.connected) {
+    showImmichView('recent');
+  } else {
+    showImmichConnect();
+  }
+}
+
+function closeImmich() {
+  immichState = null;
+  $('immich').hidden = true;
+  $('immich-body').replaceChildren();
+}
+
+const IMMICH_ERRORS = {
+  BAD_KEY: 'Immich refused that API key.',
+  UNREACHABLE: "Couldn't reach that Immich server from Backchannel's server.",
+  INVALID_ARGUMENT: 'Enter the server address (https://…) and an API key.',
+  NOT_CONNECTED: 'Connect your Immich server first.',
+};
+
+function immichError(error) {
+  return (
+    IMMICH_ERRORS[error.code] ??
+    `Immich failed (${error.code ?? error.message}).`
+  );
+}
+
+function showImmichConnect() {
+  const form = el('form', 'immich-form');
+  const server = el('input', 'setting-input');
+  server.type = 'url';
+  server.placeholder = 'Server address, like https://photos.example.com';
+  server.value = immichState.status?.url ?? '';
+  const key = el('input', 'setting-input');
+  key.type = 'password';
+  key.placeholder = 'API key (Immich: Account settings > API keys)';
+  key.autocomplete = 'off';
+  const note = el(
+    'p',
+    'setting-note',
+    "The key stays on Backchannel's server; this page never gets it back. Backchannel only reads your library."
+  );
+  const save = el('button', 'setting-button primary', 'Connect');
+  save.type = 'submit';
+  form.append(server, key, note, save);
+  if (immichState.status?.connected) {
+    const disconnect = el('button', 'setting-button', 'Disconnect');
+    disconnect.type = 'button';
+    disconnect.addEventListener('click', async () => {
+      await api('api/immich/config', { url: '', apiKey: '' }).catch(() => {});
+      immichState.status = { connected: false, url: null };
+      showImmichConnect();
+    });
+    form.append(disconnect);
+  }
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    save.disabled = true;
+    try {
+      immichState.status = await api('api/immich/config', {
+        url: server.value.trim(),
+        apiKey: key.value.trim(),
+      });
+      showImmichView('recent');
+    } catch (error) {
+      toast(immichError(error));
+      save.disabled = false;
+    }
+  });
+  $('immich-tabs').replaceChildren();
+  $('immich-foot').replaceChildren();
+  $('immich-body').replaceChildren(form);
+  setTimeout(() => (server.value ? key : server).focus());
+}
+
+function renderImmichTabs() {
+  const tabs = $('immich-tabs');
+  const tab = (view, label) => {
+    const b = el(
+      'button',
+      `setting-button small${immichState.view === view ? ' primary' : ''}`,
+      label
+    );
+    b.type = 'button';
+    b.addEventListener('click', () => showImmichView(view));
+    return b;
+  };
+  const search = el('input', 'setting-input');
+  search.type = 'search';
+  search.placeholder = 'Smart search, like "beach at sunset"';
+  search.value = immichState.query;
+  search.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && search.value.trim()) {
+      e.preventDefault();
+      immichState.query = search.value.trim();
+      showImmichView('search');
+    }
+  });
+  const settings = el('button', 'icon-button');
+  settings.type = 'button';
+  settings.title = 'Immich server';
+  settings.append(icon('settings'));
+  settings.addEventListener('click', showImmichConnect);
+  tabs.replaceChildren(
+    tab('recent', 'Recent'),
+    tab('albums', 'Albums'),
+    search,
+    settings
+  );
+}
+
+async function showImmichView(view, { more = false } = {}) {
+  const state = immichState;
+  if (!state) {
+    return;
+  }
+  state.view = view;
+  if (view !== 'album') {
+    state.albumId = view === 'recent' ? null : state.albumId;
+  }
+  renderImmichTabs();
+  renderImmichFoot();
+  const body = $('immich-body');
+  if (!more) {
+    state.items = [];
+    state.nextPage = null;
+    body.replaceChildren(el('p', 'sub', 'Loading…'));
+  }
+  try {
+    if (view === 'albums') {
+      const { albums } = await api('api/immich/albums');
+      if (immichState !== state) {
+        return;
+      }
+      body.replaceChildren(immichAlbumGrid(albums));
+      return;
+    }
+    const page = more ? state.nextPage : 1;
+    const params = new URLSearchParams({ page: String(page) });
+    let path = 'api/immich/recent';
+    if (view === 'search') {
+      path = 'api/immich/search';
+      params.set('q', state.query);
+    } else if (view === 'album') {
+      params.set('albumId', state.albumId);
+    }
+    const { items, nextPage } = await api(`${path}?${params}`);
+    if (immichState !== state) {
+      return;
+    }
+    state.items.push(...items);
+    state.nextPage = nextPage;
+    body.replaceChildren(immichAssetGrid());
+  } catch (error) {
+    if (immichState === state) {
+      body.replaceChildren(el('p', 'sub', immichError(error)));
+    }
+  }
+}
+
+function immichThumb(id) {
+  const img = el('img');
+  img.alt = '';
+  img.loading = 'lazy';
+  img.src = `api/immich/thumbnail?${new URLSearchParams({ id })}`;
+  return img;
+}
+
+function immichAlbumGrid(albums) {
+  if (albums.length === 0) {
+    return el('p', 'sub', 'No albums.');
+  }
+  const grid = el('div', 'immich-grid');
+  for (const album of albums) {
+    const tile = el('button', 'immich-tile');
+    tile.type = 'button';
+    if (album.thumbnailId) {
+      tile.append(immichThumb(album.thumbnailId));
+    }
+    tile.append(
+      el('span', 'immich-album-name', `${album.name} (${album.count})`)
+    );
+    tile.addEventListener('click', () => {
+      immichState.albumId = album.id;
+      immichState.albumName = album.name;
+      showImmichView('album');
+    });
+    grid.append(tile);
+  }
+  return grid;
+}
+
+function immichAssetGrid() {
+  const state = immichState;
+  const wrap = el('div');
+  if (state.view === 'album') {
+    wrap.append(el('p', 'sub', state.albumName ?? 'Album'));
+  }
+  if (state.items.length === 0) {
+    wrap.append(el('p', 'sub', 'Nothing here.'));
+    return wrap;
+  }
+  const grid = el('div', 'immich-grid');
+  for (const item of state.items) {
+    const tile = el('button', 'immich-tile');
+    tile.type = 'button';
+    tile.title = item.fileName;
+    tile.append(immichThumb(item.id));
+    if (item.type === 'video') {
+      tile.append(el('span', 'immich-video', '▶ Video'));
+    }
+    const mark = () => {
+      tile.classList.toggle('picked', state.picked.has(item.id));
+      tile.querySelector('.immich-check')?.remove();
+      if (state.picked.has(item.id)) {
+        tile.append(
+          el(
+            'span',
+            'immich-check',
+            String([...state.picked.keys()].indexOf(item.id) + 1)
+          )
+        );
+      }
+    };
+    tile.addEventListener('click', () => {
+      if (state.picked.has(item.id)) {
+        state.picked.delete(item.id);
+      } else if (state.picked.size < MAX_DRAFTS) {
+        state.picked.set(item.id, item);
+      } else {
+        toast(`At most ${MAX_DRAFTS} at a time.`);
+      }
+      // Numbers shift when one is taken out.
+      grid.querySelectorAll('.immich-tile').forEach(t => t.refresh?.());
+      renderImmichFoot();
+    });
+    tile.refresh = mark;
+    mark();
+    grid.append(tile);
+  }
+  wrap.append(grid);
+  if (state.nextPage) {
+    const more = el('button', 'setting-button immich-more', 'Load more');
+    more.type = 'button';
+    more.addEventListener('click', () => {
+      more.disabled = true;
+      showImmichView(state.view, { more: true });
+    });
+    wrap.append(more);
+  }
+  return wrap;
+}
+
+function renderImmichFoot() {
+  const state = immichState;
+  const count = el(
+    'span',
+    'sub',
+    state.picked.size
+      ? `${state.picked.size} selected`
+      : 'Pick photos or videos'
+  );
+  const attach = el('button', 'setting-button primary', 'Attach');
+  attach.type = 'button';
+  attach.disabled = state.picked.size === 0;
+  attach.addEventListener('click', () => attachImmich(attach));
+  $('immich-foot').replaceChildren(count, attach);
+}
+
+async function attachImmich(button) {
+  const state = immichState;
+  button.disabled = true;
+  button.textContent = 'Getting files…';
+  const files = [];
+  try {
+    for (const item of state.picked.values()) {
+      const res = await fetch(
+        `api/immich/original?${new URLSearchParams({ id: item.id, mimeType: item.mimeType })}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(`HTTP ${res.status}`), {
+          code: data.error?.code,
+        });
+      }
+      const blob = await res.blob();
+      const converted =
+        blob.type !== item.mimeType && blob.type.startsWith('image/jpeg');
+      const name = converted
+        ? item.fileName.replace(/\.[^.]+$/, '') + '.jpg'
+        : item.fileName || 'photo';
+      files.push(new File([blob], name, { type: blob.type || item.mimeType }));
+    }
+  } catch (error) {
+    toast(immichError(error));
+    button.disabled = false;
+    button.textContent = 'Attach';
+    return;
+  }
+  if (immichState !== state) {
+    return;
+  }
+  if (selectedId === state.conversationId || state.onAttach !== addDrafts) {
+    state.onAttach(files);
+  }
+  closeImmich();
+}
+
+$('immich-open').append(icon('media'));
+$('immich-open').addEventListener('click', () => openImmich());
+$('immich-close').append(icon('close'));
+$('immich-close').addEventListener('click', closeImmich);
+$('immich').addEventListener('click', e => {
+  if (e.target === $('immich')) {
+    closeImmich();
+  }
+});
+
+// --- What's New (decision F45) ---------------------------------------------
+
+// Newest first. As Backchannel Android for now: every entry since the
+// beginning shows, and the ones since your last look are marked New.
+const WHATS_NEW = [
+  [
+    '2026-11-06',
+    [
+      "Remind me: in a message's ⋯ menu, pick In 1 hour, In 3 hours, Tonight, Tomorrow or a time. It opens the chat at that message.",
+      'Keyword alerts: words that still notify from a muted chat (Settings, Notifications).',
+      'Translate a message right in your browser, where the browser can (Chrome). Nothing leaves your computer.',
+      'Replying to one photo of an album is now a comment only.',
+      'A reply to one photo can carry your own photos, GIFs, files, Immich photos or a sticker, like any reply.',
+    ],
+  ],
+  [
+    '2026-11-05',
+    [
+      'Immich: attach photos and videos straight from your own Immich server (the photos button by Contact). Your API key stays on your server.',
+      'Reply to one photo of an album: open it and press Reply at the top. Your comment quotes the message and carries that photo.',
+      'Nickname and note: give anyone your own name for them in their chat details. It syncs to your phone.',
+      'People you linked to a phone contact in Backchannel for Android show that name and photo here too.',
+      "What's New: this list, after each update. Reopen it in Settings, Appearance.",
+      "Your own photo for anyone: pick one in a chat's details. Only you see it, and it beats their profile photo.",
+      'Starred messages: star any message from its ⋯ menu, then find them all from the ★ above the chat list.',
+      'Typing :) or <3 makes the emoji. Backspace right after takes it back.',
+      'Double-click a message to react with your first reaction.',
+    ],
+  ],
+  [
+    '2026-11-03',
+    [
+      'Full markdown when you type or paste: * bullets, numbered lists, # headings, > quotes and code.',
+      'Shift+Enter continues a list. List lines keep their indent in bubbles.',
+    ],
+  ],
+  [
+    '2026-11-02',
+    [
+      "Messages go out even when someone's safety number changed.",
+      'Contact cards: see them and send your contacts.',
+    ],
+  ],
+  [
+    '2026-10-30',
+    ['GIFs play in the chat.', 'Forwarding works again after Signal 8.36.'],
+  ],
+  [
+    '2026-10-26',
+    [
+      'Block and unblock people from Settings.',
+      "See an edited message's history.",
+    ],
+  ],
+  [
+    '2026-10-19',
+    [
+      'Chat folders, and an unread filter in search.',
+      '"Safety number changed" notices.',
+      'Contact photos from your phone, kept fresh.',
+    ],
+  ],
+  [
+    '2026-10-14',
+    [
+      'All media for a chat.',
+      'Edit and @mention when forwarding, to any number of chats.',
+      'Markdown shortcuts, and styled copy and paste.',
+    ],
+  ],
+  [
+    '2026-10-13',
+    [
+      'Typing indicators, the unread line, and search.',
+      "Signal's chat menu, chat details and group management.",
+      'Voice notes, new chats and new groups.',
+      'Reply privately to someone in a group.',
+      'Link previews, sticker replies and scheduled messages.',
+      "Step through a message's photos.",
+    ],
+  ],
+  [
+    '2026-10-12',
+    [
+      'Text formatting, stickers and delivery ticks.',
+      'Settings, your profile, the blocked list and emoji skin tone.',
+    ],
+  ],
+  [
+    '2026-10-10',
+    [
+      'Photos, reactions, replies, edits and deletes.',
+      'Send files, forward without limits, polls, @mentions and the full emoji picker.',
+    ],
+  ],
+];
+const WHATS_NEW_KEY = 'whatsNewSeen';
+
+function whatsNewSeen() {
+  try {
+    return localStorage.getItem(WHATS_NEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function openWhatsNew() {
+  closePopovers();
+  const seen = whatsNewSeen() ?? '';
+  const day = new Intl.DateTimeFormat(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  $('whats-new-list').replaceChildren(
+    ...WHATS_NEW.flatMap(([date, items]) => {
+      const head = el('div', 'whats-new-day', day.format(new Date(date)));
+      if (seen && date > seen) {
+        head.append(el('span', 'new-badge', 'New'));
+      }
+      const list = el('ul');
+      list.append(...items.map(text => el('li', null, text)));
+      return [head, list];
+    })
+  );
+  $('whats-new').hidden = false;
+  try {
+    localStorage.setItem(WHATS_NEW_KEY, WHATS_NEW[0][0]);
+  } catch {
+    // It shows again next time.
+  }
+}
+
+function closeWhatsNew() {
+  $('whats-new').hidden = true;
+}
+
+$('whats-new-close').append(icon('close'));
+$('whats-new-close').addEventListener('click', closeWhatsNew);
+$('whats-new').addEventListener('click', e => {
+  if (e.target === $('whats-new')) {
+    closeWhatsNew();
+  }
+});
+if (whatsNewSeen() !== WHATS_NEW[0][0]) {
+  openWhatsNew();
+}
+
 // --- contact cards (decision F41) -------------------------------------------
 
 // A shared contact, as Signal's bubble shows it, with the numbers, emails
@@ -4751,7 +5798,11 @@ function renderContactCard(m) {
     })}`;
     head.append(img);
   } else {
-    const blank = el('span', 'avatar contact-card-initials', initials(card.name ?? ''));
+    const blank = el(
+      'span',
+      'avatar contact-card-initials',
+      initials(card.name ?? '')
+    );
     blank.style.width = blank.style.height = '44px';
     head.append(blank);
   }
@@ -4823,7 +5874,9 @@ function renderContactChooser() {
             el('span', 'title', displayTitle(c))
           );
           li.addEventListener('click', () => {
-            if (confirm(`Send ${displayTitle(c)}'s contact card to this chat?`)) {
+            if (
+              confirm(`Send ${displayTitle(c)}'s contact card to this chat?`)
+            ) {
               closeContactChooser();
               sendContactCard(c.id);
             }
@@ -5027,6 +6080,16 @@ function settingsSections() {
           setPageTheme
         )
       ),
+      settingRow(
+        "What's new",
+        'Everything added to Backchannel, newest first.',
+        (() => {
+          const open = el('button', 'setting-button', 'Show');
+          open.type = 'button';
+          open.addEventListener('click', openWhatsNew);
+          return open;
+        })()
+      ),
     ],
   });
   if (!s) {
@@ -5095,6 +6158,11 @@ function settingsSections() {
           'Notification sound',
           "Play Signal's sound with each notification.",
           settingSwitch(s.notificationSound, v => set('notificationSound', v))
+        ),
+        settingRow(
+          'Keyword alerts',
+          'A message in a muted chat with one of these words still notifies on this page. Whole words, any case. Backchannel for Android has its own list.',
+          keywordsInput()
         ),
         settingRow(
           'Reaction notifications',
@@ -5339,7 +6407,7 @@ async function sendSticker(packId, stickerId) {
   }
 }
 
-async function openStickerPicker(anchorElement) {
+async function openStickerPicker(anchorElement, onPick = sendSticker) {
   const anchor = anchorElement.getBoundingClientRect();
   let data;
   try {
@@ -5388,7 +6456,8 @@ async function openStickerPicker(anchorElement) {
         cell.append(stickerImage(st.packId, st.id, STICKER_CELL_PX, st.emoji));
         cell.addEventListener('click', ev => {
           ev.stopPropagation();
-          sendSticker(st.packId, st.id);
+          closePopovers();
+          onPick(st.packId, st.id);
         });
         return cell;
       })
@@ -5577,6 +6646,11 @@ function openMoreMenu(m, anchor) {
   };
   if (m.kind === 'text' && m.body) {
     add('copy', 'Copy text', () => copyText(toUnicode(messagePieces(m))));
+    if (canTranslate()) {
+      add('note', translations.has(m.id) ? 'Show original' : 'Translate', () =>
+        toggleTranslation(m)
+      );
+    }
   }
   if (canReplyTo(m)) {
     add('reply', 'Reply', () => startReply(m));
@@ -5609,6 +6683,11 @@ function openMoreMenu(m, anchor) {
   }
   if (m.canEdit) {
     add('edit', 'Edit', () => startEdit(m));
+  }
+  if (canReplyTo(m)) {
+    const starred = starredIds.has(m.id);
+    add('star', starred ? 'Unstar' : 'Star', () => setStar(m, !starred));
+    add('clock', 'Remind me', () => openReminderMenu(m, anchor));
   }
   add('trash', 'Delete for me', () => deleteMessage(m, false));
   if (m.canDeleteForEveryone) {
@@ -5711,11 +6790,267 @@ async function deleteMessage(m, forEveryone) {
   }
 }
 
+// --- reminders (decision F49) -----------------------------------------------
+
+// As Backchannel Android: "Remind me" on a message. The helper keeps them
+// and tells open pages when one is due.
+function reminderChoices(now = new Date()) {
+  const at = (days, hour) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    return d.getTime();
+  };
+  const choices = [
+    ['In 1 hour', now.getTime() + 60 * 60 * 1000],
+    ['In 3 hours', now.getTime() + 3 * 60 * 60 * 1000],
+  ];
+  // Hidden when it's less than half an hour away, or past.
+  if (at(0, 20) - now.getTime() >= 30 * 60 * 1000) {
+    choices.push(['Tonight, 8 PM', at(0, 20)]);
+  }
+  choices.push(['Tomorrow, 9 AM', at(1, 9)]);
+  return choices;
+}
+
+function openReminderMenu(m, anchor) {
+  const menu = $('more-menu');
+  const items = reminderChoices().map(([label, at]) => {
+    const item = el('button', 'menu-item');
+    item.type = 'button';
+    item.append(icon('clock'), el('span', '', label));
+    item.addEventListener('click', ev => {
+      ev.stopPropagation();
+      closePopovers();
+      addReminder(m, at);
+    });
+    return item;
+  });
+  const pick = el('form', 'reminder-pick');
+  const input = el('input', 'setting-input');
+  input.type = 'datetime-local';
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  input.min = local.toISOString().slice(0, 16);
+  input.setAttribute('aria-label', 'Pick a date and time');
+  const set = el('button', 'setting-button small', 'Set');
+  set.type = 'submit';
+  pick.append(input, set);
+  pick.addEventListener('click', ev => ev.stopPropagation());
+  pick.addEventListener('submit', ev => {
+    ev.preventDefault();
+    const at = new Date(input.value).getTime();
+    if (!Number.isFinite(at) || at <= Date.now()) {
+      toast('Pick a time in the future.');
+      return;
+    }
+    closePopovers();
+    addReminder(m, at);
+  });
+  menu.replaceChildren(...items, pick);
+  placePopover(menu, anchor);
+  $('more-menu').hidden = false;
+}
+
+async function addReminder(m, at) {
+  try {
+    await api('api/reminder', {
+      conversationId: m.conversationId,
+      messageId: m.id,
+      at,
+      preview: summarize(m),
+    });
+    const when = new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(at);
+    toast(`I'll remind you ${when}.`);
+  } catch (error) {
+    toast(`Reminder not set (${error.code ?? error.message}).`);
+  }
+}
+
+async function loadDueReminders() {
+  try {
+    const { reminders } = await api('api/reminders');
+    reminders.filter(r => r.due).forEach(showReminder);
+  } catch {
+    // They wait in the helper.
+  }
+}
+
+const shownReminders = new Set();
+
+function showReminder(r) {
+  if (shownReminders.has(r.id)) {
+    return;
+  }
+  shownReminders.add(r.id);
+  const c = conversations.get(r.conversationId);
+  const title = `Reminder: ${c ? displayTitle(c) : 'a message'}`;
+  const open = () => {
+    window.focus();
+    jumpToMessage({ conversationId: r.conversationId, id: r.messageId });
+  };
+  // Shown once: the helper forgets it now.
+  api('api/reminder', { removeId: r.id }).catch(() => {});
+  const content = signalSettings?.notificationContent ?? 'message';
+  const body = content === 'message' ? r.preview : 'Open to see the message';
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification(title, {
+      body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
+      tag: `reminder-${r.id}`,
+      icon: 'icon.svg',
+    });
+    n.addEventListener('click', open);
+  }
+  reminderBanner(title, body, open);
+}
+
+// In the page too, in case notifications are off or missed.
+function reminderBanner(title, body, open) {
+  const bar = el('div', 'reminder-bar');
+  const text = el('button', 'reminder-text');
+  text.type = 'button';
+  text.append(el('strong', '', title), el('span', '', body));
+  text.addEventListener('click', () => {
+    bar.remove();
+    open();
+  });
+  const close = el('button', 'icon-button');
+  close.type = 'button';
+  close.title = 'Dismiss';
+  close.append(icon('close'));
+  close.addEventListener('click', () => bar.remove());
+  bar.append(icon('clock'), text, close);
+  $('reminders').append(bar);
+}
+
+// --- translate (decision F51) -----------------------------------------------
+
+// The browser's own on-device translation (Chrome's Translator and
+// LanguageDetector APIs, with downloadable language packs). Nothing leaves
+// the browser; where the browser has no such API the menu item is absent.
+const translations = new Map();
+
+function canTranslate() {
+  return 'Translator' in self && 'LanguageDetector' in self;
+}
+
+function targetLanguage() {
+  return (navigator.language || 'en').split('-')[0];
+}
+
+async function toggleTranslation(m) {
+  if (translations.has(m.id)) {
+    translations.delete(m.id);
+    messageCache.delete(m.id);
+    renderMessages();
+    return;
+  }
+  try {
+    const detector = await LanguageDetector.create();
+    const [best] = await detector.detect(m.body);
+    const source = best?.detectedLanguage;
+    const target = targetLanguage();
+    if (!source || source === 'und') {
+      toast("Couldn't tell what language that is.");
+      return;
+    }
+    if (source === target) {
+      toast('That message is already in your language.');
+      return;
+    }
+    const availability = await Translator.availability({
+      sourceLanguage: source,
+      targetLanguage: target,
+    });
+    if (availability === 'unavailable') {
+      toast(`This browser can't translate ${source} to ${target}.`);
+      return;
+    }
+    if (availability !== 'available') {
+      toast('Downloading the language pack in your browser…');
+    }
+    const translator = await Translator.create({
+      sourceLanguage: source,
+      targetLanguage: target,
+    });
+    let from = source;
+    try {
+      from =
+        new Intl.DisplayNames([navigator.language], { type: 'language' }).of(
+          source
+        ) ?? source;
+    } catch {
+      // The code, then.
+    }
+    translations.set(m.id, {
+      text: await translator.translate(m.body),
+      from,
+    });
+    messageCache.delete(m.id);
+    renderMessages();
+  } catch (error) {
+    toast(`Not translated (${error.message}).`);
+  }
+}
+
+// --- keyword alerts (decision F50) ------------------------------------------
+
+let keywordAlerts = [];
+
+async function loadKeywords() {
+  try {
+    keywordAlerts = (await api('api/keywords')).words;
+  } catch {
+    keywordAlerts = [];
+  }
+}
+
+// Whole words, any case, as on Android.
+function matchesKeyword(text) {
+  if (!text || keywordAlerts.length === 0) {
+    return false;
+  }
+  return keywordAlerts.some(word => {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(
+      `(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`,
+      'iu'
+    ).test(text);
+  });
+}
+
+function keywordsInput() {
+  const input = el('input', 'setting-input');
+  input.type = 'text';
+  input.placeholder = 'Words, separated by commas';
+  input.value = keywordAlerts.join(', ');
+  input.addEventListener('change', async () => {
+    try {
+      const { words } = await api('api/keywords', {
+        words: input.value.split(','),
+      });
+      keywordAlerts = words;
+      input.value = words.join(', ');
+      toast(words.length ? 'Keyword alerts saved.' : 'Keyword alerts off.');
+    } catch (error) {
+      toast(`Not saved (${error.code ?? error.message}).`);
+    }
+  });
+  return input;
+}
+
 // --- notifications -----------------------------------------------------------
 
 function notify(m) {
   const c = conversations.get(m.conversationId);
-  if (!c || c.muted || m.direction !== 'incoming') {
+  if (!c || m.direction !== 'incoming') {
+    return;
+  }
+  // Keyword alerts (F50) get through a muted chat.
+  if (c.muted && !matchesKeyword(m.body)) {
     return;
   }
   if (document.hasFocus() && selectedId === m.conversationId) {
@@ -5747,8 +7082,8 @@ function notify(m) {
       body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
       tag: m.conversationId,
       icon:
-        content !== 'count' && c.avatarVersion
-          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: c.avatarVersion })}`
+        content !== 'count' && (customPhotoVersions[c.id] || c.avatarVersion)
+          ? `api/avatar?${new URLSearchParams({ conversationId: c.id, v: customPhotoVersions[c.id] ? `custom-${customPhotoVersions[c.id]}` : c.avatarVersion })}`
           : 'icon.svg',
     });
     n.addEventListener('click', () => {
@@ -5816,7 +7151,9 @@ function connectEvents() {
     disconnectedSince = null;
     reconnectDelay = 1000;
     renderBanner();
-    loadState().catch(() => {});
+    loadState()
+      .then(loadDueReminders)
+      .catch(() => {});
   });
   on('resync', () => loadState().catch(() => {}));
   on('scheduled.changed', ({ counts }) => {
@@ -5835,6 +7172,11 @@ function connectEvents() {
       renderTitle();
     }
     renderBanner();
+  });
+  on('customPhotos.changed', ({ versions }) => setCustomPhotos(versions));
+  on('reminder.due', showReminder);
+  on('keywords.changed', ({ words }) => {
+    keywordAlerts = words;
   });
   on('conversation.updated', c => {
     conversations.set(c.id, c);
@@ -5869,6 +7211,20 @@ function connectEvents() {
   });
   on('message.added', m => {
     rememberAuthors(m);
+    // A new note leaves Note to Self unread (F52), as on Android: at once
+    // when you're elsewhere, or when you leave it.
+    const target = conversations.get(m.conversationId);
+    if (
+      target?.noteToSelf &&
+      m.direction === 'outgoing' &&
+      Date.now() - m.sentAt < 60_000
+    ) {
+      if (selectedId === target.id) {
+        noteToSelfPending = true;
+      } else if (!isUnread(target)) {
+        markNoteToSelfUnread(target.id);
+      }
+    }
     // After a jump, it arrives when paging reaches the newest.
     if (m.conversationId === selectedId && newerCursor === null) {
       putMessage(m);
@@ -6634,7 +7990,7 @@ function insertPlain(text) {
   if (inserted.length > 1) {
     const chars = readCompose();
     chars.splice(start, end - start, ...inserted);
-    const done = markdownPass(chars, start, start + inserted.length);
+    const done = fullMarkdownPass(chars, start, start + inserted.length);
     drawCompose(done);
     composeBox().focus();
     selectOffsets(start + inserted.length - (chars.length - done.length));
@@ -6646,8 +8002,8 @@ function insertPlain(text) {
 
 // The body as Signal wants it: U+FFFC for each mention, and style ranges.
 function composeForSend() {
-  // Marks still in the text apply now (decision F33).
-  const chars = markdownPass(readCompose());
+  // Marks still in the text apply now (decisions F33, F42).
+  const chars = fullMarkdownPass(readCompose());
   // Ranges count UTF-16 units, as Signal's do.
   let body = '';
   const mentions = [];
@@ -7601,9 +8957,365 @@ function markdownPass(chars, from = 0, to = chars.length) {
       ...inner.map(c => ({ ...c, styles: new Set([...c.styles, style]) }))
     );
     end -= 2;
-    // Look again from here: the text inside may hold another pair.
+    // Look again from just before: the text inside may hold another pair,
+    // and **x** closes its outer pair around the inner one.
+    i = Math.max(from, i - 1);
   }
   return out;
+}
+
+// Markdown's block marks (decision F42), turned into what every Signal app
+// shows: Signal carries only bold, italic, strikethrough, monospace and
+// spoiler ranges, so the rest becomes plain characters. The rules are
+// Backchannel Android's (Markdown.kt blocks()): "* item" is a • bullet and
+// indented ones nest (◦, then ▪), "* [ ] " and "* [x] " add ☐ and ☑; "- "
+// stays a dash; "1. " keeps its number; "# Heading" is a bold line;
+// "> quote" is ▍ and italic; ---, *** or ___ alone is a rule; text between
+// ``` fences is monospace; **x** and __x__ are bold; [text](url) is
+// "text (url)". Indents become em spaces, which no Signal app collapses.
+const BULLETS = ['•', '◦', '▪'];
+const EM_SPACE = '\u2003';
+
+// A tab, two spaces or an em space is one level.
+function indentLevel(ws) {
+  let level = 0;
+  let spaces = 0;
+  for (const ch of ws) {
+    if (ch === ' ') {
+      spaces += 1;
+    } else {
+      level += 1;
+    }
+  }
+  return level + Math.floor(spaces / 2);
+}
+
+function bulletPrefix(ws) {
+  const level = indentLevel(ws);
+  return `${EM_SPACE.repeat(level)}${BULLETS[level % BULLETS.length]} `;
+}
+
+function lineText(line) {
+  return line.map(c => c.ch).join('');
+}
+
+function withStyle(chars, style) {
+  return chars.map(c =>
+    c.mention ? c : { ...c, styles: new Set([...c.styles, style]) }
+  );
+}
+
+// [text](url) as "text (url)", or just the url when the text is the url.
+function markdownLinks(line) {
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    const c = line[i];
+    if (c.ch === '[' && !c.mention && !c.styles.has('monospace')) {
+      const close = line.findIndex(
+        (d, j) => j > i && (d.ch === ']' || d.ch === '[')
+      );
+      if (
+        close > i + 1 &&
+        line[close].ch === ']' &&
+        line[close + 1]?.ch === '('
+      ) {
+        const end = line.findIndex(
+          (d, j) => j > close + 1 && (d.ch === ')' || /\s/.test(d.ch))
+        );
+        if (end > close + 2 && line[end].ch === ')') {
+          const text = line.slice(i + 1, close);
+          const url = line.slice(close + 2, end);
+          if (lineText(text) === lineText(url)) {
+            out.push(...url);
+          } else {
+            out.push(...text, ...charsOf(' ('), ...url, ...charsOf(')'));
+          }
+          i = end + 1;
+          continue;
+        }
+      }
+    }
+    out.push(c);
+    i += 1;
+  }
+  return out;
+}
+
+// **x** and __x__ as bold, before the single marks are read.
+function doubleMarks(line) {
+  const out = [...line];
+  const isDouble = (i, mark) =>
+    out[i]?.ch === mark &&
+    out[i + 1]?.ch === mark &&
+    !out[i].mention &&
+    !out[i].styles.has('monospace');
+  let i = 0;
+  while (i < out.length - 1) {
+    const mark = out[i].ch;
+    if ((mark !== '*' && mark !== '_') || !isDouble(i, mark)) {
+      i += 1;
+      continue;
+    }
+    let close = i + 2;
+    while (close < out.length - 1 && !isDouble(close, mark)) {
+      close += 1;
+    }
+    const inner = out.slice(i + 2, close);
+    if (
+      close >= out.length - 1 ||
+      inner.length === 0 ||
+      /\s/.test(inner[0].ch) ||
+      /\s/.test(inner.at(-1).ch)
+    ) {
+      i += 2;
+      continue;
+    }
+    out.splice(i, close - i + 2, ...withStyle(inner, 'bold'));
+    i += inner.length;
+  }
+  return out;
+}
+
+function inlineMarks(line) {
+  return markdownLinks(doubleMarks(line));
+}
+
+function blockMarkdownLine(line) {
+  const text = lineText(line);
+  let m = /^([ \t\u2003]*)\* (?:\[([ xX])\] )?(?=\S)/.exec(text);
+  if (m) {
+    const box = m[2] === undefined ? '' : m[2] === ' ' ? '☐ ' : '☑ ';
+    return [
+      ...charsOf(`${bulletPrefix(m[1])}${box}`),
+      ...inlineMarks(line.slice(m[0].length)),
+    ];
+  }
+  m = /^([ \t\u2003]*)(\d+[.)] )(?=\S)/.exec(text);
+  if (m) {
+    return [
+      ...charsOf(`${EM_SPACE.repeat(indentLevel(m[1]))}${m[2]}`),
+      ...inlineMarks(line.slice(m[0].length)),
+    ];
+  }
+  m = /^ *#{1,6} +(?=\S)/.exec(text);
+  if (m) {
+    return withStyle(inlineMarks(line.slice(m[0].length)), 'bold');
+  }
+  m = /^ *> ?(?=\S)/.exec(text);
+  if (m && !/^ *>\S/.test(text)) {
+    return [
+      ...charsOf('▍ '),
+      ...withStyle(inlineMarks(line.slice(m[0].length)), 'italic'),
+    ];
+  }
+  if (/^ *(?:-{3,}|\*{3,}|_{3,}) *$/.test(text)) {
+    return charsOf('──────────');
+  }
+  m = /^[ \t\u2003]+/.exec(text);
+  if (m && m[0].length < text.length) {
+    return [
+      ...charsOf(EM_SPACE.repeat(indentLevel(m[0]))),
+      ...inlineMarks(line.slice(m[0].length)),
+    ];
+  }
+  return inlineMarks(line);
+}
+
+// Over the lines that from..to touches; returns the new characters.
+function blockMarkdownPass(chars, from = 0, to = chars.length) {
+  let start = from;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  let end = to;
+  while (end < chars.length && chars[end].ch !== '\n') {
+    end += 1;
+  }
+  const lines = [[]];
+  for (const c of chars.slice(start, end)) {
+    if (c.ch === '\n') {
+      lines.push([]);
+    } else {
+      lines.at(-1).push(c);
+    }
+  }
+  const out = [];
+  let inCode = false;
+  lines.forEach((line, n) => {
+    const fence = /^ *```/.test(lineText(line));
+    if (fence) {
+      inCode = !inCode;
+      return;
+    }
+    if (out.length > 0 || n > 0) {
+      out.push({ ch: '\n', styles: new Set() });
+    }
+    out.push(
+      ...(inCode ? withStyle(line, 'monospace') : blockMarkdownLine(line))
+    );
+  });
+  // A fence on the first line leaves a leading break; drop it.
+  if (
+    lines.length > 0 &&
+    /^ *```/.test(lineText(lines[0])) &&
+    out[0]?.ch === '\n'
+  ) {
+    out.shift();
+  }
+  return [...chars.slice(0, start), ...out, ...chars.slice(end)];
+}
+
+// Both passes, block marks first so "* item" is a bullet, not an opening *.
+function fullMarkdownPass(chars, from = 0, to = chars.length) {
+  const blocked = blockMarkdownPass(chars, from, to);
+  return markdownPass(blocked, from, to + (blocked.length - chars.length));
+}
+
+// Typing "* " at the start of a line makes a bullet at once.
+function applyBulletShortcut() {
+  const at = selectionOffsets();
+  if (!at || at.start !== at.end) {
+    return false;
+  }
+  const chars = readCompose();
+  let start = at.start;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  const typed = lineText(chars.slice(start, at.start));
+  const m = /^([ \t\u2003]*)\* $/.exec(typed);
+  if (!m) {
+    return false;
+  }
+  const prefix = charsOf(bulletPrefix(m[1]));
+  chars.splice(start, at.start - start, ...prefix);
+  drawCompose(chars);
+  selectOffsets(start + prefix.length);
+  return true;
+}
+
+// A new line in a list starts the next item (the same bullet, or the next
+// number); on an empty item it ends the list instead.
+function insertNewline() {
+  const before = selectionOffsets();
+  if (before && before.start === before.end) {
+    const shrink = replaceEmoticon(before.start, EMOTICONS_AT_SPACE, false);
+    if (shrink !== null) {
+      selectOffsets(before.start - shrink);
+    }
+  }
+  const at = selectionOffsets() ?? composeSelection;
+  const chars = readCompose();
+  const caret = at?.start ?? chars.length;
+  let start = caret;
+  while (start > 0 && chars[start - 1].ch !== '\n') {
+    start -= 1;
+  }
+  const line = lineText(chars.slice(start, caret));
+  const m = /^([\u2003]*)(?:([•◦▪] (?:[☐☑] )?)|(\d+)([.)]) )(.*)$/su.exec(line);
+  if (!m || (at && at.start !== at.end)) {
+    insertPlain('\n');
+    return;
+  }
+  if (m[5].trim() === '' && caret === start + line.length) {
+    spliceCompose(start, caret, []);
+    onComposeInput();
+    return;
+  }
+  const next = m[2]
+    ? `${m[1]}${m[2].replace('☑', '☐')}`
+    : `${m[1]}${Number(m[3]) + 1}${m[4]} `;
+  spliceCompose(caret, caret, charsOf(`\n${next}`));
+  onComposeInput();
+}
+
+// Typed emoticons as emoji, Backchannel Android's list (decision F43).
+// These change the moment the last character goes in; the second list
+// waits for a space or new line, so ":Pizza" stays as typed. Either counts
+// only on its own: after a space, a new line or the start of the text.
+const EMOTICONS_NOW = {
+  ':)': '🙂',
+  ':-)': '🙂',
+  '=)': '🙂',
+  ':(': '🙁',
+  ':-(': '🙁',
+  ';)': '😉',
+  ';-)': '😉',
+  ":'(": '😢',
+  ':|': '😐',
+  ':-|': '😐',
+  '>:(': '😠',
+  'O:)': '😇',
+  ':-/': '😕',
+  ':-*': '😘',
+};
+const EMOTICONS_AT_SPACE = {
+  ':D': '😃',
+  ':-D': '😃',
+  ':P': '😛',
+  ':p': '😛',
+  ';P': '😜',
+  ':O': '😮',
+  ':o': '😮',
+  XD: '😆',
+  xD: '😆',
+  '<3': '❤️',
+  '</3': '💔',
+  ':*': '😘',
+};
+
+// The emoticon from `table` that ends at `end`, standing on its own,
+// replaced in the box. Returns how many characters it shortened the text
+// by, or null when there was none.
+function replaceEmoticon(end, table, undo) {
+  const chars = readCompose();
+  for (const [text, emoji] of Object.entries(table)) {
+    const start = end - text.length;
+    if (start < 0) {
+      continue;
+    }
+    const piece = chars.slice(start, end);
+    if (piece.some(c => c.mention) || lineText(piece) !== text) {
+      continue;
+    }
+    const before = chars[start - 1];
+    if (before && before.ch !== ' ' && before.ch !== '\n') {
+      continue;
+    }
+    const original = [...chars];
+    const replaced = charsOf(emoji);
+    chars.splice(start, text.length, ...replaced);
+    drawCompose(chars);
+    if (undo) {
+      // Backspace right after puts the characters back.
+      markdownUndo = {
+        chars: original,
+        caret: start + replaced.length,
+        restore: end,
+      };
+    }
+    return text.length - replaced.length;
+  }
+  return null;
+}
+
+// After a character is typed: an instant emoticon ending at the caret, or
+// a waiting one ending just before a typed space.
+function applyEmoticon(typed) {
+  const at = selectionOffsets();
+  if (!at || at.start !== at.end) {
+    return false;
+  }
+  const spaced = typed === ' ';
+  const shrink = spaced
+    ? replaceEmoticon(at.start - 1, EMOTICONS_AT_SPACE, false)
+    : replaceEmoticon(at.start, EMOTICONS_NOW, true);
+  if (shrink === null) {
+    return false;
+  }
+  selectOffsets(at.start - shrink);
+  return true;
 }
 
 function undoMarkdown() {
@@ -7846,6 +9558,11 @@ function wireComposeBox(box, onInput) {
     }
     markdownUndo = null;
     markdownCaret = null;
+    if (e.inputType === 'insertText' && e.data && !e.isComposing) {
+      if (!applyEmoticon(e.data) && e.data === ' ') {
+        applyBulletShortcut();
+      }
+    }
   });
   box.addEventListener('input', onInput);
   box.addEventListener('blur', () => {
@@ -7926,7 +9643,7 @@ function wireComposeBox(box, onInput) {
       if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        insertPlain('\n');
+        insertNewline();
         return;
       }
       if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey && undoMarkdown()) {
@@ -8466,7 +10183,7 @@ $('forward-compose').addEventListener('paste', e => {
 $('forward-compose').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
-    insertPlain('\n');
+    insertNewline();
   }
 });
 $('forward-send').addEventListener('click', sendForward);
@@ -8979,6 +10696,58 @@ $('compose-preview-close').addEventListener('click', dismissLinkPreview);
 $('lightbox-close').append(icon('close'));
 $('lightbox-save').append(icon('download'));
 $('lightbox-close').addEventListener('click', closeLightbox);
+$('lightbox-reply').append(icon('reply'));
+$('lightbox-reply').addEventListener('click', openPhotoReply);
+$('lightbox-reply-form').addEventListener('submit', e => {
+  e.preventDefault();
+  sendPhotoReply($('lightbox-reply-text').value);
+});
+$('lightbox-reply-attach').append(icon('attach'));
+$('lightbox-reply-attach').addEventListener('click', () =>
+  $('lightbox-reply-input').click()
+);
+$('lightbox-reply-input').addEventListener('change', () => {
+  addPhotoReplyFiles([...$('lightbox-reply-input').files]);
+  $('lightbox-reply-input').value = '';
+});
+$('lightbox-reply-immich').append(icon('media'));
+$('lightbox-reply-immich').addEventListener('click', () =>
+  openImmich(addPhotoReplyFiles)
+);
+$('lightbox-reply-sticker').append(icon('sticker'));
+$('lightbox-reply-sticker').addEventListener('click', ev => {
+  ev.stopPropagation();
+  if (!$('sticker-picker').hidden) {
+    closePopovers();
+    return;
+  }
+  openStickerPicker($('lightbox-reply-sticker'), (packId, stickerId) =>
+    sendPhotoReply($('lightbox-reply-text').value, { packId, stickerId })
+  );
+});
+$('lightbox-reply-emoji').append(icon('react'));
+$('lightbox-reply-emoji').addEventListener('click', ev => {
+  ev.stopPropagation();
+  if (!$('emoji-picker').hidden) {
+    closePopovers();
+    return;
+  }
+  openEmojiPicker($('lightbox-reply-emoji'), e => {
+    const input = $('lightbox-reply-text');
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.setRangeText(e, start, end, 'end');
+    input.focus();
+    api('api/emojiUsed', { emoji: e }).catch(() => {});
+  });
+});
+$('lightbox-reply-text').addEventListener('paste', e => {
+  const files = [...(e.clipboardData?.files ?? [])];
+  if (files.length > 0) {
+    e.preventDefault();
+    addPhotoReplyFiles(files);
+  }
+});
 $('lightbox-goto').append(icon('goto'));
 $('lightbox-goto').addEventListener('click', () => {
   const m = lightbox?.gallery;
@@ -9023,7 +10792,13 @@ $('lightbox-next').append(icon('next'));
 $('lightbox-prev').addEventListener('click', () => stepLightbox(-1));
 $('lightbox-next').addEventListener('click', () => stepLightbox(1));
 document.addEventListener('keydown', e => {
-  if (!lightbox || e.altKey || e.ctrlKey || e.metaKey) {
+  if (
+    !lightbox ||
+    e.altKey ||
+    e.ctrlKey ||
+    e.metaKey ||
+    e.target === $('lightbox-reply-text')
+  ) {
     return;
   }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -9072,6 +10847,14 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     closePopovers();
+    if (lightbox && !$('immich').hidden) {
+      closeImmich();
+      return;
+    }
+    if (lightbox && !$('lightbox-reply-form').hidden) {
+      closePhotoReply();
+      return;
+    }
     if (lightbox) {
       closeLightbox();
       return;
@@ -9084,6 +10867,12 @@ document.addEventListener('keydown', e => {
       closeScheduledList();
     } else if (!$('contact-chooser').hidden) {
       closeContactChooser();
+    } else if (!$('whats-new').hidden) {
+      closeWhatsNew();
+    } else if (!$('immich').hidden) {
+      closeImmich();
+    } else if (!$('starred').hidden) {
+      closeStarred();
     } else if (!$('block-chooser').hidden) {
       closeBlockChooser();
     } else if (!$('forward').hidden) {

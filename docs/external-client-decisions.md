@@ -1034,3 +1034,187 @@ phone number and without nickname or note, as the dialog's defaults.
 
 WHY: the 2026-11-02 parity check found "Share contacts from Desktop" in
 Signal 8.34's release notes; viewing cards was already on the list.
+
+## F42. Fork only: full markdown in the composer
+
+DECISION: the page turns markdown's block marks into what Signal carries,
+since the protocol has only bold, italic, strikethrough, monospace and
+spoiler ranges: `* item` becomes a • bullet and indented ones nest (◦,
+then ▪; a tab, two spaces or an em space is one level, written as em
+spaces, which no Signal app collapses); `* [ ] ` and `* [x] ` add ☐ and ☑;
+`- ` stays a dash; `1. ` keeps its number; a line of ---, *** or ___ is a
+rule; `__bold__` is bold too; `# Heading` becomes a bold line;
+`> quote` becomes ▍ plus italic; text between ``` fences becomes monospace;
+`[text](url)` becomes "text (url)"; `**bold**` works. It applies on paste
+and at send, typing `* ` at a line start makes a bullet at once, and
+Shift+Enter in a list starts the next item (or ends the list on an empty
+one). Every Signal app shows the result, not just Backchannel. The rules
+are Backchannel Android's (Markdown.kt blocks()), so both clients agree.
+Signal can't send a hanging indent, so the page draws one: a received or
+sent list line (bullet, number, dash) wraps under its text, not under its
+marker. That is display only; other Signal apps wrap it their own way.
+
+WHY: Mike (2026-11-03): "full-on markdown capability", "* be a bullet, not
+-", and pasted text from LLMs should convert itself.
+
+## F43. Fork only: Backchannel Android's emoticons, double-click react, stars
+
+DECISION: three Backchannel Android features on the page, with Android's
+rules. Typed emoticons become emoji: :) :-) =) :( :-( ;) ;-) :'( :| :-| >:(
+O:) :-/ :-* at once (Backspace right after undoes), and :D :-D :P :p ;P :O
+:o XD xD <3 </3 :* when a space or new line follows; only on their own,
+after a space, a new line or the start. Double-clicking a message reacts
+with your first reaction and again takes it back. Messages can be starred
+from the ⋯ menu; the star list is in the chat list header (all chats) and
+the chat menu (this chat). Stars are kept by the helper in stars.json,
+since Signal Desktop has no star and Signal never syncs them.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."
+
+## F44. Fork only: your own photo for anyone
+
+DECISION: as Backchannel Android's "Contact photo", a 1:1 chat's details
+offer "Set your own photo" (and "Remove your photo"). The picture is
+cropped square to at most 640 pixels and kept by the helper in
+custom-photos/ in its config folder (one file per chat, named by a hash of
+the chat id). It beats both their Signal profile photo and your phone's
+contact photo everywhere the page shows them, notifications included, on
+every open page. Only you see it; nothing goes to Signal, which has no such
+field.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should."
+
+## F45. Fork only: What's New after an update
+
+DECISION: as Backchannel Android, the page opens a "What's new" list when
+it has entries you haven't seen (and on a first visit). For now every entry
+since the beginning shows, newest first, and days since your last look are
+marked New. The last-seen day is kept in the browser (localStorage), so each
+browser shows it once. Settings, Appearance, "What's new" reopens it. The
+list lives in app.js (WHATS_NEW); add a day at the top with each change
+people will notice.
+
+WHY: Mike (2026-11-04), sharing Android's change list: "Where we can get
+parity, we should." Android shows all of its what's-new for the next few
+releases (Mike, 2026-11-03).
+
+## F46. Fork only: nickname and note, the web's "link to a contact"
+
+DECISION: a 1:1 chat's details offer Signal's "Nickname" dialog: first and
+last name (26 characters each) and a note (240), through
+`conversations.update` action `nickname` (no new Allow). It calls Signal's
+own updateNicknameAndNote, so it syncs to the phone and other devices and
+replaces the name Signal shows. With your own photo for them (F44), that is
+the web's version of Backchannel Android's "Link to phone contact": a
+linked Signal never sees phone contacts that didn't match a Signal user (a
+hidden number is exactly that case), so the web can't list them to pick
+from.
+
+Backchannel Android's hand-linked contacts and contact photos now ride
+Signal's contact sync (backchannel-android 3e03b26), so a link made on the
+phone shows on the web as a phone contact's name and photo do.
+
+WHY: Mike (2026-11-05): "Would be cool if it would sync the 'Link to
+contact manually' from the phone," and "I was looking to have Backchannel
+Web do that, as well."
+
+## F47. Fork only: reply to one photo of an album
+
+DECISION: as Backchannel Android bc9, the photo viewer has a Reply button.
+It opens a comment box that sends a new message to the same chat: the
+comment, a quote of the original message, and the photo
+(or video) you were looking at, attached again. A quote alone isn't enough
+because Signal's phones show the album's first photo in a quote. The page
+does it with existing calls (attachment read, upload, send), so it needs no
+new Allow.
+
+WHY: Mike (2026-11-05): "comment and emoji on a single entry in a
+multi image post. Even if that requires sending that single image back to
+the chat as a quote of the original with the emoji and the comment," and
+"Backchannel Web needs to know about" it.
+
+Update (Mike, 2026-11-06): "REPLY to single photo works fucking
+beautifully... Emoji single photo ... didn't like. Let's yoink." The emoji
+row is gone, on Android too; the comment reply stays as is.
+
+## F48. Fork only: the Immich picker
+
+DECISION: as Backchannel Android bc9, the composer has an Immich button.
+It shows your own Immich server's recent photos and videos, its albums and
+its smart search, and attaches the picks like any file. HEIC and RAW go as
+Immich's JPEG preview. The helper makes the Immich calls, with the API key
+in the x-api-key header: POST /api/search/metadata, POST /api/search/smart,
+GET /api/albums, and GET /api/assets/{id}/thumbnail and /original. The
+server address and key are saved in immich.json in the helper's config
+folder (mode 0600). The page never gets the key back, and needs no CORS
+from Immich. Backchannel only reads from Immich. Sending uses Signal's
+normal attachment path, so there is no new Allow.
+
+WHY: Mike (2026-11-05), on Android parity: "Where we can get parity, we
+should," plus the standing rule that a feature on one side is built on the
+other where possible.
+
+## F49. Fork only: Remind me
+
+DECISION: as Backchannel Android, a message's ⋯ menu has "Remind me", with
+In 1 hour, In 3 hours, Tonight 8 PM (hidden when it's less than 30 minutes
+away), Tomorrow 9 AM, or a date and time you pick. The helper keeps
+reminders in reminders.json in its config folder (mode 0600). When one comes
+due it tells the open pages, which show a notification ("Reminder: <chat>"
+with the message text, following Signal's notification content setting)
+and a banner in the page. Either one opens the chat at that message. A
+reminder that comes due with no page open waits until a page opens. Nothing
+goes to Signal or syncs.
+
+## F50. Fork only: keyword alerts
+
+DECISION: as Backchannel Android, Settings > Notifications > Keyword alerts
+takes words separated by commas. An incoming message in a muted chat that
+contains one, as a whole word in any case, notifies on the page anyway. The
+helper keeps the list in keywords.json, so every open page shares it. With
+no page open, Signal Desktop's own notifications still skip muted chats.
+
+## F51. Fork only: translate a message in the browser
+
+DECISION: a text message's ⋯ menu has "Translate" where the browser has
+on-device translation (Chrome's Translator and LanguageDetector APIs). The
+translation shows under the text, and "Show original" hides it. Language
+packs download into the browser, and nothing leaves the browser. Where the
+API is missing (other browsers, possibly Rambox), the item is absent.
+Voice-note transcription isn't on the page yet: the only browser speech API
+sends audio to Google, so it would need a model running on Six.
+
+WHY (F49 to F51): Mike's parity rule (2026-11-05) for Backchannel Android's
+reminders and keyword alerts (2026-11-06). He wants transcription and
+translation to stay on the device for security.
+
+## F52. Fork only: a new note leaves Note to Self unread
+
+DECISION: Note to Self works as a to-do pile. A note you write, on the page
+or on another device, leaves Note to Self unread, using Signal's own "Mark
+as unread", which syncs. A note that arrives while you're elsewhere marks it
+unread at once. A note written while Note to Self is open marks it unread
+when you leave it, or when you close the page. It becomes read only when you
+open Note to Self again; the page never marks it read while you're in it.
+Backchannel Android does the same. Signal Desktop itself is unchanged.
+
+WHY: Mike (2026-11-06), after the first version marked notes read at once:
+"If it's marked as read as soon as I write it, it's useless as a note to
+self." (That first version, which kept Note to Self always read, was a
+misreading. It was reverted the same day.)
+
+## F53. Fork only: a photo reply carries anything a reply can
+
+DECISION: a reply to one photo (F47) works like any other reply. Next to the
+comment box are buttons for photos, GIFs and files from your computer, for
+Immich photos, for stickers and for emoji. Pasting an image into the box also
+adds it. Added files go after the photo in the same message, and that message
+quotes the album. A sticker can't carry the photo, so it is sent as a reply
+to the photo message the page has just sent. Phones then show the right photo
+in its quote. Signal fills a quote's thumbnail from the original message's
+first attachment, so pointing a quote at photo 7 isn't possible.
+
+WHY: Mike (2026-11-06): "This should let me respond with a .gif, a photo, a
+sticker, whatever, just like a normal comment."

@@ -293,6 +293,7 @@ export type StorageAccessType = {
   pinReminderLastCompleted: number | undefined;
   pinReminderNextInterval: number | undefined;
   registrationLock: boolean | undefined;
+  allowSealedSenderFromAnyone: boolean;
 
   // Stored solely for persistence during import/export sequence
   optimizeOnDeviceStorage: boolean;
@@ -307,7 +308,6 @@ export type StorageAccessType = {
       };
   androidSpecificSettings: unknown;
   callsUseLessDataSetting: unknown;
-  allowSealedSenderFromAnyone: unknown;
 
   postRegistrationSyncsStatus: 'incomplete' | 'complete';
   standaloneRegistrationPartialState: PartialRegistrationType | undefined;

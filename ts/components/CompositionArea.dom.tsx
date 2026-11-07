@@ -41,7 +41,7 @@ import type {
   AttachmentDraftType,
   InMemoryAttachmentDraftType,
 } from '../types/Attachment.std.ts';
-import { isImageAttachment, isVoiceMessage } from '../util/Attachment.std.ts';
+import { isVoiceMessage } from '../util/Attachment.std.ts';
 import { isViewOnceEligible } from '../util/viewOnceEligibility.std.ts';
 import type { AciString } from '../types/ServiceId.std.ts';
 import { AudioCapture } from './conversation/AudioCapture.dom.tsx';
@@ -88,6 +88,7 @@ import { hasDraft } from '../util/hasDraft.std.ts';
 import type { ContactNameColorType } from '../types/ContactNameColor.std.ts';
 import type { Emoji } from '../axo/emoji.std.ts';
 import { AxoConfirmDialog } from '../axo/AxoConfirmDialog.dom.tsx';
+import type { StickerReferenceType } from '../types/Stickers.preload.ts';
 
 export type OwnProps = Readonly<{
   acceptedMessageRequest: boolean | null;
@@ -188,6 +189,7 @@ export type OwnProps = Readonly<{
   >;
   quotedMessageAuthorAci: AciString | null;
   quotedMessageSentAt: number | null;
+  showMediaQualitySelector: boolean;
 
   removeAttachment: (
     conversationId: string,
@@ -231,6 +233,10 @@ export type OwnProps = Readonly<{
     props: SmartDraftGifMessageSendModalProps | null
   ) => void;
 
+  onMarkStickerAsFavorite: (
+    stickerRef: StickerReferenceType,
+    markAsFavorite: boolean
+  ) => void;
   onSelectEmoji: (emojiSelection: FunEmojiSelection) => void;
   emojiSkinToneDefault: Emoji.SkinTone | null;
 }>;
@@ -307,6 +313,7 @@ export const CompositionArea = memo(function CompositionArea({
   // MediaQualitySelector
   setMediaQualitySetting,
   shouldSendHighQualityAttachments,
+  showMediaQualitySelector,
   // CompositionInput
   draftBodyRanges,
   draftText,
@@ -318,6 +325,7 @@ export const CompositionArea = memo(function CompositionArea({
   sendCounter,
   sortedGroupMembers,
   // FunPicker
+  onMarkStickerAsFavorite,
   onSelectEmoji,
   emojiSkinToneDefault,
   sendStickerMessage,
@@ -655,8 +663,6 @@ export const CompositionArea = memo(function CompositionArea({
       quotedMessageId: null,
     });
 
-  const showMediaQualitySelector = draftAttachments.some(isImageAttachment);
-
   const showViewOnceToggle = isViewOnceEligible(
     draftAttachments,
     Boolean(quotedMessageId)
@@ -715,6 +721,18 @@ export const CompositionArea = memo(function CompositionArea({
       });
     },
     [sendStickerMessage, conversationId]
+  );
+  const handleFunPickerMarkStickerAsFavorite = useCallback(
+    (stickerSelection: FunStickerSelection, markAsFavorite: boolean) => {
+      onMarkStickerAsFavorite(
+        {
+          packId: stickerSelection.stickerPackId,
+          stickerId: stickerSelection.stickerId,
+        },
+        markAsFavorite
+      );
+    },
+    [onMarkStickerAsFavorite]
   );
 
   const [confirmGifSelection, setConfirmGifSelection] =
@@ -822,6 +840,7 @@ export const CompositionArea = memo(function CompositionArea({
           onSelectSticker={handleFunPickerSelectSticker}
           onSelectGif={handleFunPickerSelectGif}
           onAddStickerPack={handleFunPickerAddStickerPack}
+          onMarkStickerAsFavorite={handleFunPickerMarkStickerAsFavorite}
         >
           <FunPickerButton i18n={i18n} />
         </FunPicker>
@@ -1269,6 +1288,7 @@ export const CompositionArea = memo(function CompositionArea({
               );
             }}
             onSelectEmoji={onSelectEmoji}
+            onMarkStickerAsFavorite={onMarkStickerAsFavorite}
             onTextTooLong={onTextTooLong}
             ourConversationId={ourConversationId}
             platform={platform}

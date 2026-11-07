@@ -44,6 +44,11 @@ import {
 import { ContactPhotoRefresh } from './contactPhotos.mjs';
 import { largeEmojiFontLoader } from './fonts.mjs';
 import { PrivateReplies } from './privateReplies.mjs';
+import { Stars } from './stars.mjs';
+import { CustomPhotos } from './customPhotos.mjs';
+import { Immich } from './immich.mjs';
+import { KeywordAlerts } from './keywords.mjs';
+import { Reminders } from './reminders.mjs';
 import { ScheduledMessages } from './scheduled.mjs';
 import { allowedOrigins, createWebServer } from './server.mjs';
 import { Store } from './store.mjs';
@@ -223,6 +228,13 @@ const scheduled = new ScheduledMessages(configDir, {
 });
 scheduled.ready = () => store.state === BridgeState.Ready;
 
+// Message reminders (decision F49): open pages show them when due.
+const reminders = new Reminders(join(configDir, 'reminders.json'), {
+  onDue(item) {
+    web?.broadcast('reminder.due', item);
+  },
+});
+
 const contactPhotos = new ContactPhotoRefresh(configDir, {
   sync: () => bridge.call('contacts.sync', {}),
   ready: () =>
@@ -247,6 +259,13 @@ web = createWebServer({
   store,
   bridge,
   privateReplies: new PrivateReplies(join(configDir, 'private-replies.json')),
+  stars: new Stars(join(configDir, 'stars.json')),
+  immich: new Immich(configDir ?? null),
+  reminders,
+  keywords: new KeywordAlerts(join(configDir, 'keywords.json')),
+  customPhotos: new CustomPhotos(
+    configDir ? join(configDir, 'custom-photos') : null
+  ),
   scheduled,
   contactPhotos,
   log,
@@ -275,10 +294,12 @@ if (process.stdout.isTTY) {
 }
 bridge.start();
 scheduled.start();
+reminders.start();
 
 async function shutdown() {
   log('stopping');
   scheduled.stop();
+  reminders.stop();
   await bridge.stop();
   await web.close();
   process.exit(0);

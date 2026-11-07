@@ -193,6 +193,13 @@ if [[ $rc -ne 0 || -z "$report" ]]; then
   report="FAILED: claude -p exited $rc. Log: $run_log
 $report"
 fi
-notify "sigdesktop sync
+# Only interrupt the owner when something needs attention. A clean "OK:" run
+# is written to the log and nothing else (SYNC_NOTIFY_ALWAYS=1 restores the
+# old every-run message).
+if [[ "$report" == OK:* && "${SYNC_NOTIFY_ALWAYS:-0}" != 1 ]]; then
+  log "OK, not notifying: $(printf '%s' "$report" | head -n1)"
+else
+  notify "sigdesktop sync
 $report"
+fi
 log "done (claude exit $rc)"

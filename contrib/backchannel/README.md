@@ -38,6 +38,22 @@ Backchannel does. Each new one is added here when it ships.
   Backchannel lists every chat, most recent first, with no limit.
 - **One poll to many chats.** Signal can't forward a poll; Backchannel
   sends each chat its own copy.
+- **Starred messages.** Star any message from its menu and find it again
+  in one list, for all chats or one. Kept on your server.
+- **Remind me** about any message: in an hour, tonight, tomorrow or a
+  time you pick. Opens the chat at that message.
+- **Keyword alerts** that get through a muted chat.
+- **Translate** a message in your browser, on your computer only (Chrome).
+- **Immich.** Attach photos and videos straight from your own Immich
+  server: recent, albums and smart search. The API key stays on your
+  server.
+- **Reply to one photo of an album.** Signal can only quote the whole
+  message; Backchannel's photo viewer sends your comment with
+  that one photo, plus any photos, GIFs, files or sticker you add.
+- **Your own photo for anyone.** Pick a picture for a person in their
+  chat details; it beats their profile photo, only you see it.
+- **Emoticons and double-click.** Typing :) or <3 makes the emoji, and
+  double-clicking a message reacts with your first reaction.
 - **Reply privately** to someone in a group: their message is quoted in
   your 1:1 chat, and the two are linked both ways on the page. Signal
   Desktop has no such option.
@@ -59,7 +75,11 @@ Backchannel does. Each new one is added here when it ships.
 - **Markdown shortcuts and SMS-ready copies.** Type \*bold\*,
   \_italic\_, \_\*bold italic\*\_, \~strikethrough\~ or \`monospace\` and the
   style applies as you type (Backspace right after undoes it), or as you
-  paste text that has them. Copying
+  paste text that has them. Markdown pasted in (from an LLM, say) turns
+  into what every Signal app shows: `* item` is a • bullet (indented ones
+  nest, `* [ ]` is a checkbox), `# Heading` a bold line, `> quote` an italic quote, code fences
+  monospace, links "text (url)"; typing `* ` starts a bullet and Shift+Enter
+  continues the list. Copying
   styled text puts Unicode bold, italic and strikethrough letters on the
   clipboard, so the styles survive a paste into an SMS or anywhere else,
   and pasting such text into Backchannel turns it back into Signal's styles.
@@ -207,7 +227,8 @@ image if the new one doesn't come up, and never prints the page's token.
 1. `sudo install -m 755 sync/sigdesktop-sync.sh /usr/local/bin/sigdesktop-sync`
 2. Copy `sync/sigdesktop-sync.env.example` to `/etc/sigdesktop-sync.env`
    and fill it in. `SYNC_NOTIFY` can name any command that takes the report
-   as its one argument.
+   as its one argument. It is only called for FAILED / NEEDS MIKE runs; clean
+   "OK:" runs go to the log only (set `SYNC_NOTIFY_ALWAYS=1` to get every run).
 3. Edit the user and paths in `sync/sigdesktop-sync.service`, copy it and
    `sync/sigdesktop-sync.timer` to `/etc/systemd/system/`, then
    `sudo systemctl enable --now sigdesktop-sync.timer`.

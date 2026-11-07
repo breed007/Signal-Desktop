@@ -489,6 +489,31 @@ describe('externalClient/protocol', () => {
       );
     });
 
+    it("takes Signal's nickname and note, within its limits", () => {
+      const conversationId = '0b9e2c1a-1111-4222-8333-944455556666';
+      const change = {
+        action: 'nickname',
+        givenName: 'Leila',
+        familyName: '',
+        note: '',
+      };
+      assert.isTrue(
+        accepts(conversationsUpdateParamsSchema, { conversationId, change })
+      );
+      assert.isFalse(
+        accepts(conversationsUpdateParamsSchema, {
+          conversationId,
+          change: { ...change, note: 'x'.repeat(241) },
+        })
+      );
+      assert.isFalse(
+        accepts(conversationsUpdateParamsSchema, {
+          conversationId,
+          change: { action: 'nickname', givenName: 'Leila' },
+        })
+      );
+    });
+
     it('lists chat folders, and searches unread messages only', () => {
       assert.isTrue(accepts(chatFoldersListParamsSchema, {}));
       assert.isFalse(accepts(chatFoldersListParamsSchema, { all: true }));

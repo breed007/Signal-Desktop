@@ -669,6 +669,17 @@ export class FakeBridge {
         this.#reply(session, id, { accepted: params.contactIds.length });
         return;
       }
+      case 'messages.get': {
+        const found = [...this.messages.values()]
+          .flat()
+          .find(m => m.id === params.messageId);
+        if (!found) {
+          this.#error(session, id, 'NOT_FOUND', null);
+          return;
+        }
+        this.#reply(session, id, { message: found });
+        return;
+      }
       case 'messages.getEditHistory':
         this.#reply(session, id, {
           versions: this.editHistory?.get(params.messageId) ?? [],
