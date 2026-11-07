@@ -448,7 +448,8 @@ Rebuilding an old commit gives an app that expires just as soon.
 
 ### Not done
 
-- A tap: which account hosts `homebrew-backchannel` isn't decided.
+- The tap is `breed007/homebrew-backchannel` (2026-11-07); it gets its
+  cask with the first release.
 - The front-door README text waits for the first release (`RELEASING.md`
   has it).
 - The first public release should wait for the real-account test of M2.

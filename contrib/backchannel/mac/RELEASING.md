@@ -65,7 +65,7 @@ Backchannel and for every release tag.
    `--prerelease` to mark it as a beta on GitHub, with a line saying so at
    the top of the notes.
 5. Copy `release/publish-1.11/backchannel.rb` to the tap's `Casks/`
-   folder, once there is a tap.
+   folder in `breed007/homebrew-backchannel` (see below).
 
 The release number goes in the file names and the build number
 (`CFBundleVersion`). The app's own version stays Signal Desktop's, because
@@ -73,17 +73,26 @@ Signal's servers and the expiry check read it.
 
 ## Homebrew tap
 
+The tap is [breed007/homebrew-backchannel](https://github.com/breed007/homebrew-backchannel)
+(created 2026-11-07), so the install is:
+
+```sh
+brew install --cask breed007/backchannel/backchannel
+```
+
 The cask template is `homebrew/backchannel.rb`; its download URL points at
-`breed007/Signal-Desktop`'s releases. A tap is a public repository named
-`homebrew-<name>` with the cask in `Casks/`. Which account hosts it isn't
-decided yet; the install command follows from it, for example
-`brew install --cask breed007/backchannel/backchannel` for
-`breed007/homebrew-backchannel`.
+`breed007/Signal-Desktop`'s releases. After each release, copy
+`release/publish-<version>/backchannel.rb` to the tap's
+`Casks/backchannel.rb`, commit and push. Then check it:
+
+```sh
+brew update && brew audit --cask --online breed007/backchannel/backchannel
+```
 
 ## For the front-door README
 
 Once the first release is out, this goes in `mikesimone/backchannel`'s
-README, after Quick start. Add the Homebrew line once the tap exists.
+README, after Quick start.
 
 ````markdown
 ## On a Mac
@@ -91,7 +100,11 @@ README, after Quick start. Add the Homebrew line once the tap exists.
 Backchannel for Mac is Signal Desktop with the page built in: no server,
 no Docker. It needs an Apple Silicon Mac with macOS 14 or later.
 
-Download the DMG from the
+```sh
+brew install --cask breed007/backchannel/backchannel
+```
+
+Or download the DMG from the
 [releases](https://github.com/breed007/Signal-Desktop/releases) and drag
 Backchannel to Applications.
 
@@ -100,6 +113,6 @@ devices > Link new device). Signal then asks whether to allow
 "Backchannel": allow it, and the page opens in Backchannel's own window.
 It keeps its data apart from Signal Desktop, so both can run at once.
 
-Install a newer release at least every couple of months: each build stops
-working 90 days after it's made.
+Update with `brew upgrade --cask backchannel` (or a newer DMG) at least
+every couple of months: each build stops working 90 days after it's made.
 ````
