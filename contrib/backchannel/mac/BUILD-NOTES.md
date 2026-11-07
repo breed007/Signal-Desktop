@@ -359,8 +359,8 @@ The account test isn't done yet. With your phone at hand:
 
 ## M3: signed, notarized, published (2026-11-04)
 
-Result: **unsigned path works; the signed path waits for a notarization
-profile.** Signing uses 404 Cybersecurity LLC's Developer ID (team
+Result: **works.** A signed, notarized test build (0.0.2, not published)
+passed every check on 2026-11-06. Signing uses 404 Cybersecurity LLC's Developer ID (team
 `YA83Q8FTH3`), which is in the releasing Mac's keychain. Releases are
 built on that Mac with `release.sh` and hosted on
 `breed007/Signal-Desktop`'s GitHub Releases, so no signing secret goes to
@@ -433,11 +433,21 @@ Rebuilding an old commit gives an app that expires just as soon.
   the app; only notarization is left to try.
 - `release.sh` stops before building when the profile is missing, with
   the `store-credentials` command to run.
+- `release.sh 0.0.2` with the `backchannel` profile (an Apple ID with an
+  app-specific password), 2026-11-06:
+  - electron-builder logged `notarization successful` for the app;
+    `stapler validate` passed; `spctl` said `accepted`,
+    `source=Notarized Developer ID`, `origin=Developer ID Application: 404
+    Cybersecurity LLC (YA83Q8FTH3)`.
+  - The notarized app passed the smoke test.
+  - The DMG was signed, notarized (`Accepted`) and stapled; `spctl -t open`
+    accepted it as `Notarized Developer ID`.
+  - A copy of the DMG with a quarantine flag, as a browser download gets,
+    was accepted, and so was the app copied out of it (quarantine carried
+    over, `CFBundleVersion` 0.0.2).
 
 ### Not done
 
-- A signed, notarized build: it needs the `backchannel` notarytool
-  profile on the releasing Mac.
 - A tap: which account hosts `homebrew-backchannel` isn't decided.
 - The front-door README text waits for the first release (`RELEASING.md`
   has it).
