@@ -9,6 +9,7 @@
 #
 #   contrib/backchannel/mac/release.sh 1.11            # build and check only
 #   contrib/backchannel/mac/release.sh 1.11 --publish  # then tag and release
+#   ... --publish --prerelease                          # marked as a beta
 #
 # Environment:
 #   SIGNING_IDENTITY  certificate name or SHA-1 to sign with (default: the
@@ -22,17 +23,23 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
 usage() {
-  echo "usage: $0 <version, e.g. 1.11> [--publish]" >&2
+  echo "usage: $0 <version, e.g. 1.11> [--publish [--prerelease]]" >&2
   exit 2
 }
 
 version="${1:-}"
 publish=no
-case "${2:-}" in
-  '') ;;
-  --publish) publish=yes ;;
-  *) usage ;;
-esac
+prerelease=no
+for arg in "${@:2}"; do
+  case "$arg" in
+    --publish) publish=yes ;;
+    --prerelease) prerelease=yes ;;
+    *) usage ;;
+  esac
+done
+if [ "$prerelease" = yes ] && [ "$publish" = no ]; then
+  usage
+fi
 if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
   usage
 fi
@@ -165,8 +172,19 @@ if ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
   git tag -a "$tag" -m "Backchannel for Mac $version" "$commit"
 fi
 git push origin "refs/tags/$tag"
-gh release create "$tag" --repo "$repo" --verify-tag \
-  --title "Backchannel for Mac $version" --notes-file "$out/notes.md" \
+notes="$out/notes.md"
+flags=()
+if [ "$prerelease" = yes ]; then
+  notes="$out/notes-prerelease.md"
+  {
+    echo "**Beta.** Not yet tested end to end with a linked phone. Report what breaks."
+    echo
+    cat "$out/notes.md"
+  } > "$notes"
+  flags=(--prerelease)
+fi
+gh release create "$tag" --repo "$repo" --verify-tag ${flags[@]+"${flags[@]}"} \
+  --title "Backchannel for Mac $version" --notes-file "$notes" \
   "$out"/Backchannel-* "$out/SHA256SUMS"
 echo
 echo "Published. Copy $out/backchannel.rb to the tap's Casks/ folder."

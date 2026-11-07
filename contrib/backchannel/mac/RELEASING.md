@@ -61,7 +61,9 @@ Backchannel and for every release tag.
    This uses the build from step 2 when it came from the same commit (and
    builds again otherwise), tags the commit `backchannel-mac-v1.11`, pushes
    the tag to `origin` and creates the release with the DMG, the ZIP and
-   `SHA256SUMS`. The tag also runs the unsigned check in Actions.
+   `SHA256SUMS`. The tag also runs the unsigned check in Actions. Add
+   `--prerelease` to mark it as a beta on GitHub, with a line saying so at
+   the top of the notes.
 5. Copy `release/publish-1.11/backchannel.rb` to the tap's `Casks/`
    folder, once there is a tap.
 
