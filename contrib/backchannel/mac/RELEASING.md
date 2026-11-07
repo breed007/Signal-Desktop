@@ -77,8 +77,12 @@ The tap is [breed007/homebrew-backchannel](https://github.com/breed007/homebrew-
 (created 2026-11-07), so the install is:
 
 ```sh
+brew trust --cask breed007/backchannel/backchannel
 brew install --cask breed007/backchannel/backchannel
 ```
+
+Homebrew 7 loads casks from third-party taps only once they're trusted,
+hence the first line.
 
 The cask template is `homebrew/backchannel.rb`; its download URL points at
 `breed007/Signal-Desktop`'s releases. After each release, copy
@@ -101,6 +105,7 @@ Backchannel for Mac is Signal Desktop with the page built in: no server,
 no Docker. It needs an Apple Silicon Mac with macOS 14 or later.
 
 ```sh
+brew trust --cask breed007/backchannel/backchannel
 brew install --cask breed007/backchannel/backchannel
 ```
 

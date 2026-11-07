@@ -446,10 +446,27 @@ Rebuilding an old commit gives an app that expires just as soon.
     was accepted, and so was the app copied out of it (quarantine carried
     over, `CFBundleVersion` 0.0.2).
 
+### First release: 0.1 (2026-11-07)
+
+Published as a pre-release:
+[backchannel-mac-v0.1](https://github.com/breed007/Signal-Desktop/releases/tag/backchannel-mac-v0.1),
+built from branch `mac-release` (this branch merged with Mike's `main` at
+`9a46b46ac`, F46 to F53, Signal Desktop 8.37.0-alpha.1). It expires
+2027-02-05. The cask is in `breed007/homebrew-backchannel`.
+
+- Signal 8.37 pins Node 24.22.1; install it beside 24.22.0 as in M0 step 1.
+- After switching branches, run `pnpm install --frozen-lockfile` again:
+  the patch files differ between branches, and pnpm then refuses to run
+  scripts (`ERR_PNPM_VERIFY_DEPS_BEFORE_RUN: Patches were modified`).
+- A first attempt failed with codesign's "The timestamp service is not
+  available" during a spell of dropped connections. Retrying later worked.
+- The DMG downloaded from the release matches the cask's SHA-256, and
+  `spctl` accepts it with a quarantine flag. Homebrew 7 refuses casks from
+  an untrusted tap, so the install needs
+  `brew trust --cask breed007/backchannel/backchannel` first.
+
 ### Not done
 
-- The tap is `breed007/homebrew-backchannel` (2026-11-07); it gets its
-  cask with the first release.
 - The front-door README text waits for the first release (`RELEASING.md`
   has it).
 - The first public release should wait for the real-account test of M2.
