@@ -1,7 +1,7 @@
 # Copyright 2026 Brian Reed
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# Template for Casks/backchannel.rb in the Homebrew tap. release.sh fills in
+# Template for Casks/backchannel.rb in breed007/homebrew-backchannel. release.sh fills in
 # the version and the DMG's SHA-256 for each release. Releases are hosted on
 # breed007/Signal-Desktop (2026-11-04).
 cask "backchannel" do

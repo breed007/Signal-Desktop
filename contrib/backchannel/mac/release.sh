@@ -187,4 +187,4 @@ gh release create "$tag" --repo "$repo" --verify-tag ${flags[@]+"${flags[@]}"} \
   --title "Backchannel for Mac $version" --notes-file "$notes" \
   "$out"/Backchannel-* "$out/SHA256SUMS"
 echo
-echo "Published. Copy $out/backchannel.rb to the tap's Casks/ folder."
+echo "Published. Copy $out/backchannel.rb to Casks/ in breed007/homebrew-backchannel."
